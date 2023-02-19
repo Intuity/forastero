@@ -1,4 +1,4 @@
-# Copyright 2021, Peter Birch, mailto:peter@lightlogic.co.uk
+# Copyright 2023, Peter Birch, mailto:peter@lightlogic.co.uk
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,6 +18,11 @@ class IORole(IntEnum):
     """ Role that a particular bus is performing (determines signal suffix) """
     INITIATOR = 0
     RESPONDER = 1
+
+    @staticmethod
+    def opposite(value : "IntEnum") -> "IntEnum":
+        return { IORole.INITIATOR: IORole.RESPONDER,
+                 IORole.RESPONDER: IORole.INITIATOR }[value]
 
 class BaseIO:
     """ Base I/O wrapper class """
@@ -48,7 +53,7 @@ class BaseIO:
             sig  = "o" if self.__role == IORole.INITIATOR else "i"
             sig += f"_{self.__name}_{comp}"
             if not hasattr(self.__dut, sig):
-                print(f"{type(self).__name__}: Did not find I/O component {sig} on {dut}")
+                dut._log.info(f"{type(self).__name__}: Did not find I/O component {sig} on {dut}")
                 continue
             sig_ptr = getattr(self.__dut, sig)
             self.__initiators[comp] = sig_ptr
@@ -57,11 +62,15 @@ class BaseIO:
             sig  = "i" if self.__role == IORole.INITIATOR else "o"
             sig += f"_{self.__name}_{comp}"
             if not hasattr(self.__dut, sig):
-                print(f"{type(self).__name__}: Did not find I/O component {sig} on {dut}")
+                dut._log.info(f"{type(self).__name__}: Did not find I/O component {sig} on {dut}")
                 continue
             sig_ptr = getattr(self.__dut, sig)
             self.__responders[comp] = sig_ptr
             setattr(self, comp, sig_ptr)
+
+    @property
+    def role(self):
+        return self.__role
 
     def initialise(self, role):
         """ Initialise signals according to the active role """

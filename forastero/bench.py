@@ -1,4 +1,4 @@
-# Copyright 2021, Peter Birch, mailto:peter@lightlogic.co.uk
+# Copyright 2023, Peter Birch, mailto:peter@lightlogic.co.uk
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ from cocotb_bus.scoreboard import Scoreboard
 from cocotb_bus.drivers import Driver
 
 from .driver import BaseDriver
+from .io import IORole
 from .monitor import BaseMonitor
 
 class BaseBench:
@@ -53,6 +54,10 @@ class BaseBench:
     async def initialise(self):
         """ Initialise the DUT's I/O """
         self.rst.value = 1
+        for driver in self.drivers.values():
+            driver.intf.initialise(IORole.opposite(driver.intf.role))
+        for monitor in self.monitors.values():
+            monitor.intf.initialise(IORole.opposite(monitor.intf.role))
 
     async def reset(self, init=True, wait=20):
         """ Reset the DUT.
