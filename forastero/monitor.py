@@ -39,4 +39,9 @@ class BaseMonitor(Monitor):
         super().__init__()
 
     async def idle(self):
-        while self.expected: await RisingEdge(self.clock)
+        num_expected = None
+        while self.expected:
+            if num_expected is None or len(self.expected) < (0.5 * num_expected):
+                num_expected = len(self.expected)
+                self.entity._log.info(f"Monitor '{self.name}' has {num_expected} transactions left")
+            await RisingEdge(self.clock)

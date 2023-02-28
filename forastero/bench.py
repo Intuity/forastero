@@ -99,6 +99,7 @@ class BaseBench:
         """
         assert isinstance(inst, BaseDriver), "Not a subclass of BaseDriver"
         self.drivers[name] = inst
+        inst.name = name
         setattr(self, name, inst)
 
     def register_monitor(self, name : str, inst : BaseMonitor) -> None:
@@ -112,6 +113,7 @@ class BaseBench:
         """
         assert isinstance(inst, BaseMonitor), "Not a subclass of BaseMonitor"
         self.monitors[name] = inst
+        inst.name = name
         setattr(self, name, inst)
         def _compare_func(got : Any):
             return self.__compare_transactions(inst, got)
@@ -130,6 +132,8 @@ class BaseBench:
             got    : Transaction received by the monitor
         """
         # Pop the next expected transaction
+        if len(monitor.expected) == 0:
+            raise Exception(f"No expected packets queued on monitor {monitor.name}")
         exp     = monitor.expected.pop(0)
         fmt_int = lambda x: (hex(x) if not isinstance(x, Enum) and
                                        isinstance(x, int) and
@@ -175,12 +179,15 @@ class BaseBench:
             await monitor.idle()
 
     @classmethod
-    def testcase(cls, *args, **kwargs) -> None:
+    def testcase(cls, *args, reset=True, **kwargs) -> None:
         """ Custom testcase declaration, wraps test with bench class"""
         class _testcase(cocotb.test):
             def __call__(self, dut, *args, **kwargs):
                 async def __run_test():
                     tb = cls(dut)
+                    if reset:
+                        tb.info("Resetting the DUT")
+                        await tb.reset()
                     await self._func(tb, *args, **kwargs)
                     await tb.close_down()
                     raise tb.scoreboard.result
