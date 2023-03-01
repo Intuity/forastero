@@ -69,4 +69,4 @@ class BaseDriver(Driver):
     def sniff(self, transaction : Any) -> None:
         """ Provide packet to sniffer, if defined """
         if self.sniffer:
-            self.sniffer(self, transaction)
+            self.sniffer(driver=self, transaction=transaction)
