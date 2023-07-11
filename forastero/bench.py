@@ -17,6 +17,7 @@ import os
 from typing import Any
 
 import cocotb
+from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles
 from cocotb.utils import get_sim_time
 from cocotb_bus.scoreboard import Scoreboard
@@ -28,7 +29,13 @@ from .monitor import BaseMonitor
 
 class BaseBench:
 
-    def __init__(self, dut, clk="i_clk", rst="i_rst"):
+    def __init__(self,
+                 dut,
+                 clk        : str   ="i_clk",
+                 rst        : str   ="i_rst",
+                 clk_drive  : bool  =True,
+                 clk_period : float =1,
+                 clk_units  : str   ="ns"):
         """ Initialise the base testbench.
 
         Args:
@@ -39,6 +46,10 @@ class BaseBench:
         # Promote clock & reset
         self.clk = getattr(dut, clk)
         self.rst = getattr(dut, rst)
+        # Clock driving
+        self.clk_drive  = clk_drive
+        self.clk_period = clk_period
+        self.clk_units  = clk_units
         # Expose logging methods
         self.debug   = dut._log.debug
         self.info    = dut._log.info
@@ -185,6 +196,10 @@ class BaseBench:
             def __call__(self, dut, *args, **kwargs):
                 async def __run_test():
                     tb = cls(dut)
+                    if tb.clk_drive:
+                        cocotb.start_soon(Clock(tb.clk,
+                                                tb.clk_period,
+                                                units=tb.clk_units).start())
                     if reset:
                         tb.info("Resetting the DUT")
                         await tb.reset()
