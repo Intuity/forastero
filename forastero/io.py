@@ -95,5 +95,6 @@ class BaseIO:
         getattr(self, comp).value = value
 
     def width(self, comp):
+        if not self.has(comp): return 0
         sig = getattr(self, comp)
         return max(sig._range) - min(sig._range) + 1
