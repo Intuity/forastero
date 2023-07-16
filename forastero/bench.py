@@ -70,23 +70,24 @@ class BaseBench:
         for monitor in self.monitors.values():
             monitor.intf.initialise(IORole.opposite(monitor.intf.role))
 
-    async def reset(self, init=True, wait=20):
+    async def reset(self, init=True, wait_during=20, wait_after=1):
         """ Reset the DUT.
 
         Args:
-            init: Initialise the DUT's I/O
-            wait: Number of clock cycles to wait after init and reset
+            init       : Initialise the DUT's I/O
+            wait_during: Clock cycles to hold reset active for (defaults to 20)
+            wait_after : Clock cycles to wait after lowering reset (defaults to 1)
         """
         # Drive reset high
         self.rst.value = 1
         # Initialise I/O
         if init:
             await self.initialise()
-            await ClockCycles(self.clk, wait)
+            await ClockCycles(self.clk, wait_during)
         # Drop reset
         self.rst.value = 0
         # Wait for a bit
-        await ClockCycles(self.clk, wait)
+        await ClockCycles(self.clk, wait_after)
 
     def __getattr__(self, key):
         """ Pass through accesses to signals on the DUT.
