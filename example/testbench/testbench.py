@@ -34,5 +34,7 @@ class Testbench(BaseBench):
         x_io = StreamIO(dut, "x", IORole.INITIATOR)
         self.register("a_init", StreamInitiator(self, a_io, self.clk, self.rst))
         self.register("b_init", StreamInitiator(self, b_io, self.clk, self.rst))
-        self.register("x_resp", StreamResponder(self, x_io, self.clk, self.rst))
+        self.register(
+            "x_resp", StreamResponder(self, x_io, self.clk, self.rst, blocking=False)
+        )
         self.register("x_mon", StreamMonitor(self, x_io, self.clk, self.rst))

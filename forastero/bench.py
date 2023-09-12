@@ -12,21 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
+import os
 import random
-from dataclasses import is_dataclass
-from enum import Enum
-from typing import Any
+from collections.abc import Coroutine
 
 import cocotb
 from cocotb.clock import Clock
 from cocotb.handle import HierarchyObject, ModifiableObject
 from cocotb.triggers import ClockCycles, Event, with_timeout
-from cocotb.utils import get_sim_time
 
 from .component import Component
 from .driver import BaseDriver
 from .io import IORole
 from .monitor import BaseMonitor
+from .scoreboard import Scoreboard
 
 
 class BaseBench:
@@ -59,10 +59,11 @@ class BaseBench:
         self.warning = dut._log.warning
         self.error = dut._log.error
         # # Create a scoreboard
-        # imm_fail = os.environ.get("FAIL_IMMEDIATELY", "no").lower() == "yes"
-        # self.scoreboard = Scoreboard(self, fail_immediately=imm_fail)
+        fail_fast = os.environ.get("FAIL_FAST", "no").lower() == "yes"
+        self.scoreboard = Scoreboard(fail_fast=fail_fast)
         # Track components
         self.components = {}
+        self.processes = {}
         # Random seeding
         self.seed = 0
         self.random = random.Random(self.seed)
@@ -110,92 +111,60 @@ class BaseBench:
         except Exception:
             return getattr(self.dut, key)
 
-    def register(self, name: str, inst: Component) -> None:
+    def register(
+        self,
+        name: str,
+        comp_or_coro: Component | Coroutine = None,
+        scoreboard: bool = True,
+    ) -> None:
         """
-        Register a driver or a monitor providing they inherit from BaseDriver or
-        BaseMonitor types.
+        Register a driver, monitor, or coroutine with the testbench. Drivers and
+        monitors must be provided a name and their random seeding will be setup
+        from the testbench's random instance. Monitors will be registered with
+        the scoreboard unless explicitly requested. Coroutines must also be named
+        and are required to complete before the test will shutdown.
 
-        Args:
-            name: Name of the driver/monitor
-            inst: Instance of the driver/monitor
+        :param name:         Name of the component or coroutine
+        :param comp_or_coro: Component instance or coroutine
+        :param scoreboard:   Only applies to monitors, controls whether it is
+                             registered with the scoreboard
         """
-        if isinstance(inst, Component):
-            self.components[name] = inst
-            inst.name = name
-            setattr(self, name, inst)
-            inst.seed(self.random)
+        assert isinstance(name, str), f"Name must be a string '{name}'"
+        if asyncio.iscoroutine(comp_or_coro):
+            assert name not in self.processes, f"Process known for '{name}'"
+            task = cocotb.start_soon(comp_or_coro)
+            self.processes[name] = task
+        elif isinstance(comp_or_coro, Component):
+            assert name not in self.components, f"Component known for '{name}'"
+            self.components[name] = comp_or_coro
+            comp_or_coro.name = name
+            setattr(self, name, comp_or_coro)
+            comp_or_coro.seed(self.random)
+            if scoreboard and isinstance(comp_or_coro, BaseMonitor):
+                self.scoreboard.attach(comp_or_coro)
         else:
-            raise TypeError(f"Unsupported object: {inst}")
+            raise TypeError(f"Unsupported object: {comp_or_coro}")
 
-    def __compare_transactions(self, monitor: BaseMonitor, got: Any) -> None:
+    async def close_down(self, loops: int = 2, delay: int = 100) -> None:
         """
-        Check that the received transaction of a monitor and the next expected
-        transaction in the monitor's queue match one another, and verbosely
-        print out the differences when an error occurs.
+        Wait for drivers, monitors, and the scoreboard to drain to ensure that
+        the test has completed.
 
-        Args:
-            monitor: Pointer to the monitor which collected the transaction
-            got    : Transaction received by the monitor
+        :param loops: Number of repetitions of the shutdown sequence to run
+        :param delay: Number of clock cycles to wait between shutdown loops
         """
-        # Pop the next expected transaction
-        if len(monitor.expected) == 0:
-            self.scoreboard.errors += 1
-            self.error(
-                f"No expected packets queued on monitor {monitor.name} for: {got}"
-            )
-            return
-        exp = monitor.expected.pop(0)
-
-        def fmt_int(x):
-            return (
-                hex(x)
-                if not isinstance(x, Enum) and isinstance(x, int) and x > 9
-                else str(x)
-            )
-
-        # Check to see expected transaction matches received data
-        # NOTE: Monitor's may provide a 'compare' method to override '!='
-        if (monitor.compare is None and exp != got) or (
-            monitor.compare is not None and not monitor.compare(got, exp)
-        ):
-            self.error(
-                f"Unexpected {type(exp).__name__} received by {monitor.name} at "
-                f"{get_sim_time('ns')} ns:"
-            )
-            if is_dataclass(exp):
-                max_key = max(len(x) for x in vars(exp).keys())
-                entries = []
-                for key, exp_val in vars(exp).items():
-                    got_val = getattr(got, key)
-                    exp_str = fmt_int(exp_val)
-                    got_str = fmt_int(got_val)
-                    entries.append((key, exp_str, got_str))
-                max_key = max(len(x[0]) for x in entries)
-                max_exp = max(len(x[1]) for x in entries)
-                max_got = max(len(x[2]) for x in entries)
-                for key, exp, got in entries:
-                    self.info(
-                        f" - [{[' ','!'][exp != got]}] {key:<{max_key}s} - "
-                        f"E: {exp:<{max_exp}s}, G: {got:<{max_got}s}"
-                    )
-            else:
-                self.info(
-                    f" - [{[' ','!'][exp != got]}] E: {fmt_int(exp)}, G: {fmt_int(got)}"
-                )
-            self.scoreboard.errors += 1
-            if self.scoreboard._imm:
-                assert self.scoreboard.errors == 0
-
-    async def close_down(self, shutdown_loops: int = 2) -> None:
-        """Wait for all drivers and monitors to drain"""
         # Filter drivers and monitors into separate lists
         drivers, monitors = [], []
         for comp in self.components.values():
+            if not comp.blocking:
+                continue
             [monitors, drivers][isinstance(comp, BaseDriver)].append(comp)
         # Check for consistent idleness
-        self.info("Shutdown loop starting")
-        for shutdown_loop_count in range(1, shutdown_loops + 1):
-            await ClockCycles(self.clk, 100)
+        for loop_idx in range(loops):
+            # All drivers and monitors should be idle
+            self.info(f"Shutdown loop ({loop_idx+1}/{loops})")
+            # Wait for
+            await ClockCycles(self.clk, delay)
             # Wait for all drivers to return to idle
             for driver in drivers:
                 self.info(f"Waiting for driver '{driver.name}' to go idle")
@@ -204,14 +173,32 @@ class BaseBench:
             for monitor in monitors:
                 self.info(f"Waiting for monitor '{monitor.name}' to go idle")
                 await monitor.idle()
-            # All drivers and monitors should be idle
-            self.info(f"Shutdown loop count ({shutdown_loop_count}/{shutdown_loops})")
+            # Wait for processes
+            procs, self.processes = self.processes, {}
+            for name, proc in procs.items():
+                self.info(f"Waiting for process '{name}' to complete")
+                await proc
+            # Drain the scoreboard
+            await self.scoreboard.drain()
 
     @classmethod
     def testcase(
-        cls, *args, reset=True, timeout=None, shutdown_loops=2, **kwargs
+        cls,
+        *args,
+        reset=True,
+        timeout=10000,
+        shutdown_loops=2,
+        shutdown_delay=100,
+        **kwargs,
     ) -> None:
-        """Custom testcase declaration, wraps test with bench class"""
+        """
+        Custom testcase declaration, wraps test with bench class
+
+        :param reset:          Whether to reset the design
+        :param timeout:        Maximum run time for a test (in clock cycles)
+        :param shutdown_loops: Number of loops of the shutdown sequence
+        :param shutdown_delay: Delay between loops of the shutdown sequence
+        """
 
         class _Testcase(cocotb.test):
             def __call__(self, dut, *args, **kwargs):
@@ -231,13 +218,16 @@ class BaseBench:
 
                     async def _inner():
                         await self._func(tb, *args, **kwargs)
-                        await tb.close_down(shutdown_loops=shutdown_loops)
+                        await tb.close_down(loops=shutdown_loops, delay=shutdown_delay)
 
+                    # Run with a timeout if specified
                     if timeout is None:
                         await _inner()
                     else:
                         await with_timeout(_inner(), timeout, "ns")
-                    # raise tb.scoreboard.result
+
+                    # Check the result
+                    assert tb.scoreboard.result, "Scoreboard reported test failure"
 
                 return cocotb.decorators._RunningTest(_run_test(), self)
 

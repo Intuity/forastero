@@ -12,13 +12,52 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from dataclasses import dataclass, field
+import dataclasses
+from typing import Any
 
 from cocotb.utils import get_sim_time
+from tabulate import tabulate
 
 
-@dataclass(kw_only=True)
+@dataclasses.dataclass(kw_only=True)
 class BaseTransaction:
-    timestamp: int = field(
+    timestamp: int = dataclasses.field(
         default_factory=lambda: get_sim_time(units="ns"), compare=False
     )
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, BaseTransaction):
+            return self.compare(other)
+        else:
+            return super().__eq__(other)
+
+    def format(self, field: str, value: Any) -> str:  # noqa: A003
+        del field
+        if isinstance(value, int):
+            return f"0x{value:X}"
+        else:
+            return value
+
+    def difference(self, other: "BaseTransaction") -> dict[str, tuple[Any, Any]]:
+        diff = {}
+        for field in dataclasses.fields(self):
+            if field.compare:
+                a_val = getattr(self, field.name)
+                b_val = getattr(other, field.name)
+                if a_val != b_val:
+                    diff[field.name] = (a_val, b_val)
+        return diff
+
+    def compare(self, other: "BaseTransaction") -> bool:
+        return not self.difference(other)
+
+    def tabulate(self, other: "BaseTransaction") -> bool:
+        rows = []
+        for field in dataclasses.fields(self):
+            a_val = self.format(field.name, getattr(self, field.name))
+            b_val = self.format(field.name, getattr(other, field.name))
+            flag = ["", "!!!"][field.compare and (a_val != b_val)]
+            rows.append((field.name, a_val, b_val, flag))
+        return tabulate(
+            rows, headers=["Field", "Captured", "Expected", "Match?"], tablefmt="grid"
+        )

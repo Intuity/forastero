@@ -15,6 +15,9 @@
 # Simulator options
 SIM           ?= icarus
 TOPLEVEL_LANG ?= verilog
+DEFINES       += sim_$(SIM)
+PLUSARGS      += +WAVE_FILE=dump.vcd
+COMPILE_ARGS  += $(addprefix -D ,$(DEFINES))
 
 # Design sources
 VERILOG_SOURCES += $(abspath arbiter.sv)

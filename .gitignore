@@ -130,3 +130,8 @@ dmypy.json
 
 # Poetry lock
 poetry.lock
+
+# Simulation
+example/sim_build
+example/results.xml
+example/*.vcd

@@ -31,12 +31,13 @@ class Component:
     Base component type for working with BaseIO interfaces, can be extended to
     form drivers, monitors, and other signalling protocol aware components.
 
-    :param tb:      Handle to the testbench
-    :param io:      Handle to the BaseIO interface
-    :param clk:     Clock signal to use when driving/sampling the interface
-    :param rst:     Reset signal to use when driving/sampling the interface
-    :param random:  Random number generator to use (optional)
-    :param name:    Unique name for this component instance (optional)
+    :param tb:       Handle to the testbench
+    :param io:       Handle to the BaseIO interface
+    :param clk:      Clock signal to use when driving/sampling the interface
+    :param rst:      Reset signal to use when driving/sampling the interface
+    :param random:   Random number generator to use (optional)
+    :param name:     Unique name for this component instance (optional)
+    :param blocking: Whether this component should block shutdown (default: True)
     """
 
     def __init__(
@@ -47,6 +48,7 @@ class Component:
         rst: ModifiableObject,
         random: Random | None = None,
         name: str | None = None,
+        blocking: bool = True,
     ) -> None:
         # To avoid an import loop
         from .bench import BaseBench
@@ -57,8 +59,9 @@ class Component:
         self.io = io
         self.clk = clk
         self.rst = rst
-        self.name = name or type(self).__name__
         self.random = Random(random.random() if random else 0)
+        self.name = name or type(self).__name__
+        self.blocking = blocking
         self.log = SimLog(name=self.name)
         self.log.setLevel(_COCOTB_LOG_LEVEL_DEFAULT)
         self._lock = asyncio.Lock()
