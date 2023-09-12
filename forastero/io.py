@@ -15,7 +15,7 @@
 from enum import IntEnum
 from typing import Any
 
-from cocotb.handle import HierarchyObject, ModifiableObject
+from cocotb.handle import HierarchyObject
 
 
 class IORole(IntEnum):
@@ -106,9 +106,22 @@ class BaseIO:
             sig.value = 0
 
     def has(self, comp: str) -> bool:
+        """
+        Test whether a particular signal has been resolved inside the interface.
+
+        :param comp: Name of the component
+        :returns:    True if exists, False otherwise
+        """
         return (comp in self.__initiators) or (comp in self.__responders)
 
-    def get(self, comp: str, default: Any = None) -> ModifiableObject:
+    def get(self, comp: str, default: Any = None) -> Any:
+        """
+        Get the current value of a particular signal.
+
+        :param comp:    Name of the component
+        :param default: Default value if the signal is not resolved
+        :returns:       The resolved value, otherwise the default
+        """
         item = getattr(self, comp, None)
         if item is None:
             return default
@@ -117,11 +130,23 @@ class BaseIO:
             return (raw == 1) if len(item) == 1 else raw
 
     def set(self, comp: str, value: Any) -> None:  # noqa: A003
+        """
+        Set the value of a particular signal if it exists.
+
+        :param comp:  Name of the component
+        :param value: Value to set
+        """
         if not self.has(comp):
             return
         getattr(self, comp).value = value
 
-    def width(self, comp: str) -> None:
+    def width(self, comp: str) -> int:
+        """
+        Return the width of a particular signal.
+
+        :param comp: Name of the component
+        :returns:    The bit width if resolved, else 0
+        """
         if not self.has(comp):
             return 0
         sig = getattr(self, comp)

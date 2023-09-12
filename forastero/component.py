@@ -68,28 +68,51 @@ class Component:
         self._handlers = defaultdict(list)
 
     def seed(self, random: Random) -> None:
+        """
+        Set up the random seed (used by testbench when registering a component)
+
+        :param random:  The random instance to seed from
+        """
         self.random = Random(random.random())
 
     def subscribe(self, event: Enum, callback: Callable) -> None:
+        """
+        Subscribe to an event being published by this component.
+
+        :param event:    Enumerated event
+        :param callback: Method to call when the event occurs, this must accept
+                         arguments of component, event type, and an associated
+                         object
+        """
         if not isinstance(event, Enum):
             raise TypeError(f"Event should inherit from Enum, unlike {event}")
         self._handlers[event].append(callback)
 
     def publish(self, event: Enum, obj: Any) -> None:
+        """
+        Publish an event and deliver it to any registered subscribers.
+
+        :param event: Enumerated event
+        :param obj:   Object associated to the event
+        """
         for handler in self._handlers[event]:
             handler(self, event, obj)
 
     async def lock(self) -> None:
+        """Lock the component's internal lock"""
         await self._lock.acquire()
 
     def release(self) -> None:
+        """Release the component's internal lock"""
         self._lock.release()
 
     @property
     def busy(self) -> bool:
+        """Determine if the component is currently busy"""
         return self._lock.locked()
 
     async def idle(self) -> None:
+        """Blocks until the component is no longer busy"""
         while True:
             await RisingEdge(self.clk)
             if not self.busy:

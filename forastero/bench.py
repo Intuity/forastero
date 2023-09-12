@@ -16,6 +16,7 @@ import asyncio
 import os
 import random
 from collections.abc import Coroutine
+from typing import Any
 
 import cocotb
 from cocotb.clock import Clock
@@ -30,6 +31,17 @@ from .scoreboard import Scoreboard
 
 
 class BaseBench:
+    """
+    Base class for a Forastero testbench
+
+    :param dut:        Handle to the DUT, provided by cocotb
+    :param clk:        Handle to the primary clock signal
+    :param rst:        Handle to the primary reset signal
+    :param clk_drive:  Whether the primary clock signal should be driven
+    :param clk_period: Tick period for the primary clock
+    :param clk_units:  Units of the primary clock's period
+    """
+
     def __init__(
         self,
         dut: HierarchyObject,
@@ -39,11 +51,6 @@ class BaseBench:
         clk_period: float = 1,
         clk_units: str = "ns",
     ) -> None:
-        """Initialise the base testbench.
-
-        Args:
-            dut: Pointer to the DUT
-        """
         # Hold a pointer to the DUT
         self.dut = dut
         # Promote clock & reset
@@ -75,19 +82,18 @@ class BaseBench:
         await self.evt_ready.wait()
         self.evt_ready.clear()
 
-    async def initialise(self):
+    async def initialise(self) -> None:
         """Initialise the DUT's I/O"""
         self.rst.value = 1
         for comp in self.components.values():
             comp.io.initialise(IORole.opposite(comp.io.role))
 
-    async def reset(self, init=True, wait_during=20, wait_after=1):
+    async def reset(self, init=True, wait_during=20, wait_after=1) -> None:
         """Reset the DUT.
 
-        Args:
-            init       : Initialise the DUT's I/O
-            wait_during: Clock cycles to hold reset active for (defaults to 20)
-            wait_after : Clock cycles to wait after lowering reset (defaults to 1)
+        :param init       : Initialise the DUT's I/O
+        :param wait_during: Clock cycles to hold reset active for (defaults to 20)
+        :param wait_after : Clock cycles to wait after lowering reset (defaults to 1)
         """
         # Drive reset high
         self.rst.value = 1
@@ -100,11 +106,11 @@ class BaseBench:
         # Wait for a bit
         await ClockCycles(self.clk, wait_after)
 
-    def __getattr__(self, key):
+    def __getattr__(self, key: str) -> Any:
         """Pass through accesses to signals on the DUT.
 
-        Args:
-            key: Name of the attribute
+        :param key: Name of the attribute
+        :returns:   Resolved object
         """
         try:
             return getattr(super(), key)

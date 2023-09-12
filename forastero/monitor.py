@@ -44,6 +44,7 @@ class BaseMonitor(Component):
         cocotb.start_soon(self._monitor_loop())
 
     async def _monitor_loop(self) -> None:
+        """Main loop for monitoring transactions on the interface"""
         await self.tb.ready()
         await RisingEdge(self.clk)
 
@@ -54,5 +55,11 @@ class BaseMonitor(Component):
             await self.monitor(_capture)
 
     async def monitor(self, capture: Callable) -> None:
+        """
+        Placeholder monitor, this should be overridden by a child class to match
+        the signalling protocol of the interface's implementation.
+
+        :param capture: Function to call whenever a transaction is captured
+        """
         del capture
         raise NotImplementedError("monitor is not implemented on BaseMonitor")

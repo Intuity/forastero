@@ -48,9 +48,15 @@ class BaseDriver(Component):
 
     @property
     def busy(self):
+        """Busy when either locked or the queue has outstanding entries"""
         return not self._queue.empty() and super().busy
 
     def enqueue(self, transaction: BaseTransaction) -> None:
+        """
+        Queue up a transaction to be driven onto the interface
+
+        :param transaction: Transaction to queue, must inherit from BaseTransaction
+        """
         if not isinstance(transaction, BaseTransaction):
             raise TypeError(
                 f"Transaction objects should inherit from "
@@ -59,7 +65,7 @@ class BaseDriver(Component):
         self._queue.put_nowait(transaction)
 
     async def _driver_loop(self) -> None:
-        self.log.info(f"Driver loop for {self.name}")
+        """Main loop for driving transactions onto the interface"""
         await self.tb.ready()
         await RisingEdge(self.clk)
         while True:
@@ -74,5 +80,11 @@ class BaseDriver(Component):
             self.release()
 
     async def drive(self, obj: BaseTransaction) -> None:
+        """
+        Placeholder driver, this should be overridden by a child class to match
+        the signalling protocol of the interface's implementation.
+
+        :param obj: The transaction to drive onto the interface
+        """
         del obj
         raise NotImplementedError("drive is not implemented on BaseDriver")
