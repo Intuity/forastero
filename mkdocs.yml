@@ -30,9 +30,11 @@ markdown_extensions:
       emoji_generator: !!python/name:materialx.emoji.to_svg
 nav:
   - Welcome: "index.md"
-  - IO: "io.md"
-  - Transactions: "transaction.md"
-  - Drivers: "driver.md"
-  - Monitors: "monitor.md"
-  - Scoreboards: "scoreboard.md"
-  - Testbenches: "bench.md"
+  - Components: "components.md"
+  - API Reference:
+    - IO: "classes/io.md"
+    - Transactions: "classes/transaction.md"
+    - Drivers: "classes/driver.md"
+    - Monitors: "classes/monitor.md"
+    - Scoreboards: "classes/scoreboard.md"
+    - Testbenches: "classes/bench.md"

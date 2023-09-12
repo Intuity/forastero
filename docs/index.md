@@ -8,6 +8,11 @@ writing testbenches for hardware designs written in a HDL such as SystemVerilog.
 It is agnostic to the simulator being used, working equally well with opensource
 and commercial solutions, which is rather unique for the EDA industry.
 
+In some ways Forastero is a spiritual successor to
+[cocotb-bus](https://github.com/cocotb/cocotb-bus), which has now fallen out of
+active support. Forastero takes much of its inspiration from cocotb-bus, but
+takes a different view to how the testbench and its various components interact.
+
 ## What makes Forastero different?
 
 ### Testbench Class
