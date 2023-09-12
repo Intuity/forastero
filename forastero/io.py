@@ -31,7 +31,7 @@ class IORole(IntEnum):
 class BaseIO:
     """Base I/O wrapper class"""
 
-    def __init__(self, dut, name, role, init_sigs, resp_sigs):
+    def __init__(self, dut, name, role, init_sigs, resp_sigs) -> None:
         """Initialise BaseIO.
 
         Args:
@@ -55,7 +55,9 @@ class BaseIO:
         self.__initiators, self.__responders = {}, {}
         for comp in self.__init_sigs:
             sig = "o" if self.__role == IORole.INITIATOR else "i"
-            sig += f"_{self.__name}_{comp}"
+            if self.__name is not None:
+                sig += f"_{self.__name}"
+            sig += f"_{comp}"
             if not hasattr(self.__dut, sig):
                 dut._log.info(
                     f"{type(self).__name__}: Did not find I/O component {sig} on {dut}"
@@ -66,7 +68,9 @@ class BaseIO:
             setattr(self, comp, sig_ptr)
         for comp in self.__resp_sigs:
             sig = "i" if self.__role == IORole.INITIATOR else "o"
-            sig += f"_{self.__name}_{comp}"
+            if self.__name is not None:
+                sig += f"_{self.__name}"
+            sig += f"_{comp}"
             if not hasattr(self.__dut, sig):
                 dut._log.info(
                     f"{type(self).__name__}: Did not find I/O component {sig} on {dut}"
@@ -79,6 +83,10 @@ class BaseIO:
     @property
     def role(self):
         return self.__role
+
+    @property
+    def dut(self):
+        return self.__dut
 
     def initialise(self, role):
         """Initialise signals according to the active role"""

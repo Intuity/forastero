@@ -33,8 +33,10 @@ class BaseDriver(Driver):
         name: str | None = None,
         delay: tuple[int, int] = (0, 0),
         probability: float = 1.0,
+        block: bool = True,
         sniffer: Callable | None = None,
-    ):
+        random: Any | None = None,
+    ) -> None:
         """Initialise the BaseDriver instance.
 
         Args:
@@ -45,8 +47,10 @@ class BaseDriver(Driver):
             name       : Optional name of the monitor (defaults to the class)
             delay      : Tuple of min-max delays
             probability: Probability of delay
+            block      : Whether or not to block closedown of the simulation
             sniffer    : Optional function to call each time a queued packet is
                          driven into the design
+            random     : Instance of Python's random library
         """
         self.name = name or type(self).__name__
         self.entity = entity
@@ -55,8 +59,10 @@ class BaseDriver(Driver):
         self.intf = intf
         self.delay = delay
         self.probability = probability
+        self.block = block
         self.sniffer = sniffer
         self.busy = False
+        self.random = random
         super().__init__()
 
     def lock(self) -> None:
@@ -75,4 +81,4 @@ class BaseDriver(Driver):
     def sniff(self, transaction: Any) -> None:
         """Provide packet to sniffer, if defined"""
         if self.sniffer:
-            self.sniffer(driver=self, transaction=transaction)
+            self.sniffer(component=self, transaction=transaction)

@@ -12,14 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import Callable
+from typing import Any
+
 from cocotb.triggers import RisingEdge
 from cocotb_bus.monitors import Monitor
+
+from .io import BaseIO
 
 
 class BaseMonitor(Monitor):
     """Base class for monitors"""
 
-    def __init__(self, entity, clock, reset, intf, name=None, compare=None):
+    def __init__(
+        self,
+        entity: Any,
+        clock: Any,
+        reset: Any,
+        intf: BaseIO,
+        name: str | None = None,
+        compare: Callable | None = None,
+        block: bool = True,
+        sniffer: Callable | None = None,
+        random: Any | None = None,
+    ) -> None:
         """Initialise the BaseMonitor instance.
 
         Args:
@@ -29,6 +45,10 @@ class BaseMonitor(Monitor):
             intf   : Interface
             name   : Optional name of the monitor (defaults to the class)
             compare: Function to compare transactions
+            block  : Whether or not to block closedown of the simulation
+            sniffer: Optional function to call each time a transaction is captured
+                     from the design (before submitting to scoreboard)
+            random     : Instance of Python's random library
         """
         self.name = name or type(self).__name__
         self.entity = entity
@@ -36,7 +56,11 @@ class BaseMonitor(Monitor):
         self.reset = reset
         self.intf = intf
         self.compare = compare
+        self.block = block
+        self.sniffer = sniffer
         self.expected = []
+        self.random = random
+        self.valid_data_count = 0
         super().__init__()
 
     async def idle(self):
@@ -48,3 +72,9 @@ class BaseMonitor(Monitor):
                     f"Monitor '{self.name}' has {num_expected} transactions left"
                 )
             await RisingEdge(self.clock)
+
+    def sniff(self, transaction) -> None:
+        """Provide packet to sniffer, if defined"""
+        if self.sniffer:
+            self.sniffer(component=self, transaction=transaction)
+        self.valid_data_count += 1
