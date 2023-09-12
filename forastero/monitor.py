@@ -13,68 +13,53 @@
 # limitations under the License.
 
 from collections.abc import Callable
-from typing import Any
+from enum import Enum, auto
 
+import cocotb
 from cocotb.triggers import RisingEdge
-from cocotb_bus.monitors import Monitor
 
-from .io import BaseIO
+from .component import Component
+from .transaction import BaseTransaction
 
 
-class BaseMonitor(Monitor):
-    """Base class for monitors"""
+class MonitorEvent(Enum):
+    CAPTURE = auto()
 
-    def __init__(
-        self,
-        entity: Any,
-        clock: Any,
-        reset: Any,
-        intf: BaseIO,
-        name: str | None = None,
-        compare: Callable | None = None,
-        block: bool = True,
-        sniffer: Callable | None = None,
-        random: Any | None = None,
-    ) -> None:
-        """Initialise the BaseMonitor instance.
 
-        Args:
-            entity : Pointer to the testbench/DUT
-            clock  : Clock signal for the interface
-            reset  : Reset signal for the interface
-            intf   : Interface
-            name   : Optional name of the monitor (defaults to the class)
-            compare: Function to compare transactions
-            block  : Whether or not to block closedown of the simulation
-            sniffer: Optional function to call each time a transaction is captured
-                     from the design (before submitting to scoreboard)
-            random     : Instance of Python's random library
+class BaseMonitor(Component):
+    """
+    Component for sampling transactions from an interface matching the
+    implementation's signalling protocol.
+
+    :param tb:      Handle to the testbench
+    :param io:      Handle to the BaseIO interface
+    :param clk:     Clock signal to use when driving/sampling the interface
+    :param rst:     Reset signal to use when driving/sampling the interface
+    :param random:  Random number generator to use (optional)
+    :param name:    Unique name for this component instance (optional)
+    """
+
+    def __init__(self, *args, **kwds) -> None:
+        super().__init__(*args, **kwds)
+        cocotb.start_soon(self._monitor_loop())
+
+    async def _monitor_loop(self) -> None:
+        """Main loop for monitoring transactions on the interface"""
+        await self.tb.ready()
+        await RisingEdge(self.clk)
+
+        def _capture(obj: BaseTransaction):
+            self.publish(MonitorEvent.CAPTURE, obj)
+
+        while True:
+            await self.monitor(_capture)
+
+    async def monitor(self, capture: Callable) -> None:
         """
-        self.name = name or type(self).__name__
-        self.entity = entity
-        self.clock = clock
-        self.reset = reset
-        self.intf = intf
-        self.compare = compare
-        self.block = block
-        self.sniffer = sniffer
-        self.expected = []
-        self.random = random
-        self.valid_data_count = 0
-        super().__init__()
+        Placeholder monitor, this should be overridden by a child class to match
+        the signalling protocol of the interface's implementation.
 
-    async def idle(self):
-        num_expected = None
-        while self.expected:
-            if num_expected is None or len(self.expected) < (0.5 * num_expected):
-                num_expected = len(self.expected)
-                self.entity._log.info(
-                    f"Monitor '{self.name}' has {num_expected} transactions left"
-                )
-            await RisingEdge(self.clock)
-
-    def sniff(self, transaction) -> None:
-        """Provide packet to sniffer, if defined"""
-        if self.sniffer:
-            self.sniffer(component=self, transaction=transaction)
-        self.valid_data_count += 1
+        :param capture: Function to call whenever a transaction is captured
+        """
+        del capture
+        raise NotImplementedError("monitor is not implemented on BaseMonitor")

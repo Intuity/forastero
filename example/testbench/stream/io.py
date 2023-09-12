@@ -12,23 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .bench import BaseBench
-from .driver import BaseDriver, DriverEvent
-from .io import BaseIO, IORole
-from .monitor import BaseMonitor, MonitorEvent
-from .scoreboard import Scoreboard
-from .transaction import BaseTransaction
+from cocotb.handle import HierarchyObject
 
-assert all(
-    (
-        BaseBench,
-        BaseDriver,
-        IORole,
-        BaseIO,
-        BaseMonitor,
-        BaseTransaction,
-        DriverEvent,
-        MonitorEvent,
-        Scoreboard,
-    )
-)
+from forastero import BaseIO
+from forastero.io import IORole
+
+
+class StreamIO(BaseIO):
+    def __init__(self, dut: HierarchyObject, name: str, role: IORole) -> None:
+        super().__init__(dut, name, role, ["data", "valid"], ["ready"])

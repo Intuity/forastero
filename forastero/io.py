@@ -13,6 +13,9 @@
 # limitations under the License.
 
 from enum import IntEnum
+from typing import Any
+
+from cocotb.handle import HierarchyObject
 
 
 class IORole(IntEnum):
@@ -29,18 +32,25 @@ class IORole(IntEnum):
 
 
 class BaseIO:
-    """Base I/O wrapper class"""
+    """
+    Wraps a collection of different signals into a single interface that can be
+    used by drivers and monitors to interact with the design.
 
-    def __init__(self, dut, name, role, init_sigs, resp_sigs) -> None:
-        """Initialise BaseIO.
+    :param dut      : Pointer to the DUT boundary
+    :param name     : Name of the signal - acts as a prefix
+    :param role     : Role of this signal on the DUT boundary
+    :param init_sigs: Signals driven by the initiator
+    :param resp_sigs: Signals driven by the responder
+    """
 
-        Args:
-            dut      : Pointer to the DUT boundary
-            name     : Name of the signal - acts as a prefix
-            role     : Role of this signal on the DUT boundary
-            init_sigs: Signals driven by the initiator
-            resp_sigs: Signals driven by the responder
-        """
+    def __init__(
+        self,
+        dut: HierarchyObject,
+        name: str,
+        role: IORole,
+        init_sigs: list[str],
+        resp_sigs: list[str],
+    ) -> None:
         # Sanity checks
         assert role in IORole, f"Role {role} is not recognised"
         assert isinstance(init_sigs, list), "Initiator signals are not a list"
@@ -81,24 +91,37 @@ class BaseIO:
             setattr(self, comp, sig_ptr)
 
     @property
-    def role(self):
+    def role(self) -> IORole:
         return self.__role
 
     @property
-    def dut(self):
+    def dut(self) -> HierarchyObject:
         return self.__dut
 
-    def initialise(self, role):
+    def initialise(self, role: IORole) -> None:
         """Initialise signals according to the active role"""
         for sig in (
             self.__initiators if role == IORole.INITIATOR else self.__responders
         ).values():
             sig.value = 0
 
-    def has(self, comp):
+    def has(self, comp: str) -> bool:
+        """
+        Test whether a particular signal has been resolved inside the interface.
+
+        :param comp: Name of the component
+        :returns:    True if exists, False otherwise
+        """
         return (comp in self.__initiators) or (comp in self.__responders)
 
-    def get(self, comp, default=None):
+    def get(self, comp: str, default: Any = None) -> Any:
+        """
+        Get the current value of a particular signal.
+
+        :param comp:    Name of the component
+        :param default: Default value if the signal is not resolved
+        :returns:       The resolved value, otherwise the default
+        """
         item = getattr(self, comp, None)
         if item is None:
             return default
@@ -106,12 +129,24 @@ class BaseIO:
             raw = int(item.value)
             return (raw == 1) if len(item) == 1 else raw
 
-    def set(self, comp, value):  # noqa: A003
+    def set(self, comp: str, value: Any) -> None:  # noqa: A003
+        """
+        Set the value of a particular signal if it exists.
+
+        :param comp:  Name of the component
+        :param value: Value to set
+        """
         if not self.has(comp):
             return
         getattr(self, comp).value = value
 
-    def width(self, comp):
+    def width(self, comp: str) -> int:
+        """
+        Return the width of a particular signal.
+
+        :param comp: Name of the component
+        :returns:    The bit width if resolved, else 0
+        """
         if not self.has(comp):
             return 0
         sig = getattr(self, comp)

@@ -12,23 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .bench import BaseBench
-from .driver import BaseDriver, DriverEvent
-from .io import BaseIO, IORole
-from .monitor import BaseMonitor, MonitorEvent
-from .scoreboard import Scoreboard
-from .transaction import BaseTransaction
+from dataclasses import dataclass
 
-assert all(
-    (
-        BaseBench,
-        BaseDriver,
-        IORole,
-        BaseIO,
-        BaseMonitor,
-        BaseTransaction,
-        DriverEvent,
-        MonitorEvent,
-        Scoreboard,
-    )
-)
+from forastero import BaseTransaction
+
+
+@dataclass(kw_only=True)
+class StreamTransaction(BaseTransaction):
+    data: int = 0
+
+
+@dataclass(kw_only=True)
+class StreamBackpressure(BaseTransaction):
+    ready: bool = True
+    cycles: int = 1

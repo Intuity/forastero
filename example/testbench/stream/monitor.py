@@ -12,23 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .bench import BaseBench
-from .driver import BaseDriver, DriverEvent
-from .io import BaseIO, IORole
-from .monitor import BaseMonitor, MonitorEvent
-from .scoreboard import Scoreboard
-from .transaction import BaseTransaction
+from collections.abc import Callable
 
-assert all(
-    (
-        BaseBench,
-        BaseDriver,
-        IORole,
-        BaseIO,
-        BaseMonitor,
-        BaseTransaction,
-        DriverEvent,
-        MonitorEvent,
-        Scoreboard,
-    )
-)
+from cocotb.triggers import RisingEdge
+
+from forastero import BaseMonitor
+
+from .transaction import StreamTransaction
+
+
+class StreamMonitor(BaseMonitor):
+    async def monitor(self, capture: Callable) -> None:
+        while True:
+            await RisingEdge(self.clk)
+            if self.rst.value == 1:
+                continue
+            if self.io.get("valid", 1) and self.io.get("ready", 1):
+                capture(StreamTransaction(data=self.io.get("data", 0)))
