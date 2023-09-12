@@ -1,0 +1,38 @@
+site_name: Forastero
+repo_name: intuity/forastero
+repo_url: https://github.com/intuity/forastero
+theme:
+  name: material
+  palette:
+    scheme: slate
+    primary: teal
+plugins:
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: sphinx
+markdown_extensions:
+  - attr_list
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - admonition
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:materialx.emoji.twemoji
+      emoji_generator: !!python/name:materialx.emoji.to_svg
+nav:
+  - Welcome: "index.md"
+  - IO: "io.md"
+  - Transactions: "transaction.md"
+  - Drivers: "driver.md"
+  - Monitors: "monitor.md"
+  - Scoreboards: "scoreboard.md"
+  - Testbenches: "bench.md"

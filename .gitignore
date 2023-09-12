@@ -135,3 +135,6 @@ poetry.lock
 example/sim_build
 example/results.xml
 example/*.vcd
+
+# macOS
+.DS_Store
