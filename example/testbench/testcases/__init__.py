@@ -12,10 +12,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .bench import BaseBench
-from .driver import BaseDriver
-from .io import BaseIO, IORole
-from .monitor import BaseMonitor
-from .transaction import BaseTransaction
-
-assert all((BaseBench, BaseDriver, IORole, BaseIO, BaseMonitor, BaseTransaction))
+from .random import *  # noqa: F403
+from .smoke import *  # noqa: F403

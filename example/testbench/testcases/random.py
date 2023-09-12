@@ -12,10 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .bench import BaseBench
-from .driver import BaseDriver
-from .io import BaseIO, IORole
-from .monitor import BaseMonitor
-from .transaction import BaseTransaction
 
-assert all((BaseBench, BaseDriver, IORole, BaseIO, BaseMonitor, BaseTransaction))
+from ..stream import StreamBackpressure, StreamTransaction
+from ..testbench import Testbench
+
+
+@Testbench.testcase()
+async def random(tb: Testbench):
+    # Disable backpressure on input
+    tb.x_resp.enqueue(StreamBackpressure(ready=True))
+    # Queue random traffic onto interfaces A & B
+    for _ in range(100):
+        tb.a_init.enqueue(a := StreamTransaction(data=tb.random.getrandbits(32)))
+        tb.b_init.enqueue(b := StreamTransaction(data=tb.random.getrandbits(32)))
+        del a
+        del b

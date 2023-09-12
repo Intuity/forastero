@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .bench import BaseBench
-from .driver import BaseDriver
-from .io import BaseIO, IORole
-from .monitor import BaseMonitor
-from .transaction import BaseTransaction
+from .initiator import StreamInitiator
+from .io import StreamIO
+from .monitor import StreamMonitor
+from .responder import StreamResponder
+from .transaction import StreamBackpressure, StreamTransaction
 
-assert all((BaseBench, BaseDriver, IORole, BaseIO, BaseMonitor, BaseTransaction))
+assert all((StreamInitiator, StreamIO, StreamMonitor, StreamResponder))
+assert all((StreamBackpressure, StreamTransaction))

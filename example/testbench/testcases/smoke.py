@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .bench import BaseBench
-from .driver import BaseDriver
-from .io import BaseIO, IORole
-from .monitor import BaseMonitor
-from .transaction import BaseTransaction
+from cocotb.triggers import ClockCycles
 
-assert all((BaseBench, BaseDriver, IORole, BaseIO, BaseMonitor, BaseTransaction))
+from ..testbench import Testbench
+
+
+@Testbench.testcase()
+async def smoke(tb: Testbench):
+    await ClockCycles(tb.clk, 1000)

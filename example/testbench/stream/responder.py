@@ -12,10 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .bench import BaseBench
-from .driver import BaseDriver
-from .io import BaseIO, IORole
-from .monitor import BaseMonitor
-from .transaction import BaseTransaction
+from cocotb.triggers import ClockCycles
 
-assert all((BaseBench, BaseDriver, IORole, BaseIO, BaseMonitor, BaseTransaction))
+from forastero.driver import BaseDriver
+
+from .transaction import StreamBackpressure
+
+
+class StreamResponder(BaseDriver):
+    async def drive(self, obj: StreamBackpressure) -> None:
+        self.io.set("ready", obj.ready)
+        await ClockCycles(self.clk, obj.cycles)

@@ -12,10 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .bench import BaseBench
-from .driver import BaseDriver
-from .io import BaseIO, IORole
-from .monitor import BaseMonitor
-from .transaction import BaseTransaction
+# Simulator options
+SIM           ?= icarus
+TOPLEVEL_LANG ?= verilog
 
-assert all((BaseBench, BaseDriver, IORole, BaseIO, BaseMonitor, BaseTransaction))
+# Design sources
+VERILOG_SOURCES += $(abspath arbiter.sv)
+
+# Design top-level
+TOPLEVEL = arbiter
+
+# Testbench module
+export PYTHONPATH := $(PYTHONPATH):$(abspath ..)
+MODULE = testbench
+
+# include cocotb's make rules to take care of the simulator setup
+include $(shell cocotb-config --makefiles)/Makefile.sim

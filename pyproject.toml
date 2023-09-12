@@ -16,6 +16,7 @@ pre-commit = "^3.3.3"
 ruff = "^0.0.282"
 black = "^23.7.0"
 pytest = "^7.4.0"
+cocotb = "^1.8.0"
 
 [tool.ruff]
 # See https://beta.ruff.rs/docs/rules

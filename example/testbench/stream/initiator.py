@@ -12,10 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .bench import BaseBench
-from .driver import BaseDriver
-from .io import BaseIO, IORole
-from .monitor import BaseMonitor
-from .transaction import BaseTransaction
+from cocotb.triggers import RisingEdge
 
-assert all((BaseBench, BaseDriver, IORole, BaseIO, BaseMonitor, BaseTransaction))
+from forastero.driver import BaseDriver
+
+from .transaction import StreamTransaction
+
+
+class StreamInitiator(BaseDriver):
+    async def drive(self, obj: StreamTransaction) -> None:
+        self.io.set("data", obj.data)
+        self.io.set("valid", 1)
+        while True:
+            await RisingEdge(self.clk)
+            if self.io.get("ready", 1):
+                break
+        self.io.set("valid", 0)

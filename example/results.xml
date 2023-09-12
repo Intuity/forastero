@@ -1,0 +1,7 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1694525854" />
+    <testcase name="random" classname="testbench.testcases.random" file="/Users/peterbirch/Development/forastero/example/testbench/testcases/random.py" lineno="20" time="0.022404909133911133" sim_time_ns="425.001" ratio_time="18969.101702659274" />
+    <testcase name="smoke" classname="testbench.testcases.smoke" file="/Users/peterbirch/Development/forastero/example/testbench/testcases/smoke.py" lineno="19" time="0.041689157485961914" sim_time_ns="1229.001" ratio_time="29480.11123548957" />
+  </testsuite>
+</testsuites>

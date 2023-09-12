@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 import random
 from dataclasses import is_dataclass
 from enum import Enum
@@ -20,10 +19,11 @@ from typing import Any
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles, with_timeout
+from cocotb.handle import HierarchyObject, ModifiableObject
+from cocotb.triggers import ClockCycles, Event, with_timeout
 from cocotb.utils import get_sim_time
-from cocotb_bus.scoreboard import Scoreboard
 
+from .component import Component
 from .driver import BaseDriver
 from .io import IORole
 from .monitor import BaseMonitor
@@ -32,9 +32,9 @@ from .monitor import BaseMonitor
 class BaseBench:
     def __init__(
         self,
-        dut,
-        clk: str = "i_clk",
-        rst: str = "i_rst",
+        dut: HierarchyObject,
+        clk: ModifiableObject | None = None,
+        rst: ModifiableObject | None = None,
         clk_drive: bool = True,
         clk_period: float = 1,
         clk_units: str = "ns",
@@ -47,8 +47,8 @@ class BaseBench:
         # Hold a pointer to the DUT
         self.dut = dut
         # Promote clock & reset
-        self.clk = getattr(dut, clk)
-        self.rst = getattr(dut, rst)
+        self.clk = clk
+        self.rst = rst
         # Clock driving
         self.clk_drive = clk_drive
         self.clk_period = clk_period
@@ -58,23 +58,27 @@ class BaseBench:
         self.info = dut._log.info
         self.warning = dut._log.warning
         self.error = dut._log.error
-        # Create a scoreboard
-        imm_fail = os.environ.get("FAIL_IMMEDIATELY", "no").lower() == "yes"
-        self.scoreboard = Scoreboard(self, fail_immediately=imm_fail)
-        # Track drivers and monitors
-        self.drivers = {}
-        self.monitors = {}
+        # # Create a scoreboard
+        # imm_fail = os.environ.get("FAIL_IMMEDIATELY", "no").lower() == "yes"
+        # self.scoreboard = Scoreboard(self, fail_immediately=imm_fail)
+        # Track components
+        self.components = {}
         # Random seeding
         self.seed = 0
         self.random = random.Random(self.seed)
+        # Events
+        self.evt_ready = Event()
+
+    async def ready(self) -> None:
+        """Blocks until reset has completed"""
+        await self.evt_ready.wait()
+        self.evt_ready.clear()
 
     async def initialise(self):
         """Initialise the DUT's I/O"""
         self.rst.value = 1
-        for driver in self.drivers.values():
-            driver.intf.initialise(IORole.opposite(driver.intf.role))
-        for monitor in self.monitors.values():
-            monitor.intf.initialise(IORole.opposite(monitor.intf.role))
+        for comp in self.components.values():
+            comp.io.initialise(IORole.opposite(comp.io.role))
 
     async def reset(self, init=True, wait_during=20, wait_after=1):
         """Reset the DUT.
@@ -106,7 +110,7 @@ class BaseBench:
         except Exception:
             return getattr(self.dut, key)
 
-    def register(self, name: str, inst: BaseDriver | BaseMonitor) -> None:
+    def register(self, name: str, inst: Component) -> None:
         """
         Register a driver or a monitor providing they inherit from BaseDriver or
         BaseMonitor types.
@@ -115,50 +119,13 @@ class BaseBench:
             name: Name of the driver/monitor
             inst: Instance of the driver/monitor
         """
-        if isinstance(inst, BaseDriver):
-            self.__register_driver(name, inst)
-        elif isinstance(inst, BaseMonitor):
-            self.__register_monitor(name, inst)
+        if isinstance(inst, Component):
+            self.components[name] = inst
+            inst.name = name
+            setattr(self, name, inst)
+            inst.seed(self.random)
         else:
             raise TypeError(f"Unsupported object: {inst}")
-
-        if inst.random is None:
-            new_seed = self.random.getrandbits(32)
-            inst.random = random.Random(new_seed)
-            self.debug(f"Created new random instance for {name} with seed {new_seed}")
-
-    def __register_driver(self, name: str, inst: BaseDriver) -> None:
-        """
-        Register a driver with the testbench, will be included in the shutdown
-        handling.
-
-        Args:
-            name: Name of the driver
-            inst: Instance of the driver
-        """
-        assert isinstance(inst, BaseDriver), "Not a subclass of BaseDriver"
-        self.drivers[name] = inst
-        inst.name = name
-        setattr(self, name, inst)
-
-    def __register_monitor(self, name: str, inst: BaseMonitor) -> None:
-        """
-        Register a monitor with the testbench, creating an expected transaction
-        list and linking it to the scoreboard.
-
-        Args:
-            name: Name of the monitor to register
-            inst: Instance of the monitor
-        """
-        assert isinstance(inst, BaseMonitor), "Not a subclass of BaseMonitor"
-        self.monitors[name] = inst
-        inst.name = name
-        setattr(self, name, inst)
-
-        def _compare_func(got: Any):
-            return self.__compare_transactions(inst, got)
-
-        self.scoreboard.add_interface(inst, inst.expected, compare_fn=_compare_func)
 
     def __compare_transactions(self, monitor: BaseMonitor, got: Any) -> None:
         """
@@ -221,20 +188,22 @@ class BaseBench:
 
     async def close_down(self, shutdown_loops: int = 2) -> None:
         """Wait for all drivers and monitors to drain"""
-        # Wait a number of cycles and check for idle
+        # Filter drivers and monitors into separate lists
+        drivers, monitors = [], []
+        for comp in self.components.values():
+            [monitors, drivers][isinstance(comp, BaseDriver)].append(comp)
+        # Check for consistent idleness
         self.info("Shutdown loop starting")
         for shutdown_loop_count in range(1, shutdown_loops + 1):
             await ClockCycles(self.clk, 100)
             # Wait for all drivers to return to idle
-            for key, driver in self.drivers.items():
-                self.info(f"Waiting for driver '{key}' to go idle")
-                if driver.block:
-                    await driver.idle()
+            for driver in drivers:
+                self.info(f"Waiting for driver '{driver.name}' to go idle")
+                await driver.idle()
             # Wait for all monitor queues to drain
-            for key, monitor in self.monitors.items():
-                self.info(f"Waiting for monitor '{key}' to go idle")
-                if monitor.block:
-                    await monitor.idle()
+            for monitor in monitors:
+                self.info(f"Waiting for monitor '{monitor.name}' to go idle")
+                await monitor.idle()
             # All drivers and monitors should be idle
             self.info(f"Shutdown loop count ({shutdown_loop_count}/{shutdown_loops})")
 
@@ -255,18 +224,22 @@ class BaseBench:
                     if reset:
                         tb.info("Resetting the DUT")
                         await tb.reset()
+                        tb.info("DUT reset complete")
+
+                    # Mark ready
+                    tb.evt_ready.set()
 
                     async def _inner():
                         await self._func(tb, *args, **kwargs)
-                        await tb.close_down()
+                        await tb.close_down(shutdown_loops=shutdown_loops)
 
                     if timeout is None:
                         await _inner()
                     else:
                         await with_timeout(_inner(), timeout, "ns")
-                    raise tb.scoreboard.result
+                    # raise tb.scoreboard.result
 
-                return cocotb.decorators.RunningTest(_run_test(), self)
+                return cocotb.decorators._RunningTest(_run_test(), self)
 
         def _do_decorate(func):
             # _testcase acts as a function which returns a decorator, hence the

@@ -12,10 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .bench import BaseBench
-from .driver import BaseDriver
-from .io import BaseIO, IORole
-from .monitor import BaseMonitor
-from .transaction import BaseTransaction
+from dataclasses import dataclass, field
 
-assert all((BaseBench, BaseDriver, IORole, BaseIO, BaseMonitor, BaseTransaction))
+from cocotb.utils import get_sim_time
+
+
+@dataclass(kw_only=True)
+class BaseTransaction:
+    timestamp: int = field(
+        default_factory=lambda: get_sim_time(units="ns"), compare=False
+    )
