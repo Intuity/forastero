@@ -12,31 +12,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from enum import Enum
 import os
+from enum import Enum
 from typing import Any
 
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles
 from cocotb.utils import get_sim_time
-from cocotb_bus.scoreboard import Scoreboard
 from cocotb_bus.drivers import Driver
+from cocotb_bus.scoreboard import Scoreboard
 
 from .driver import BaseDriver
 from .io import IORole
 from .monitor import BaseMonitor
 
-class BaseBench:
 
-    def __init__(self,
-                 dut,
-                 clk        : str   ="i_clk",
-                 rst        : str   ="i_rst",
-                 clk_drive  : bool  =True,
-                 clk_period : float =1,
-                 clk_units  : str   ="ns"):
-        """ Initialise the base testbench.
+class BaseBench:
+    def __init__(
+        self,
+        dut,
+        clk: str = "i_clk",
+        rst: str = "i_rst",
+        clk_drive: bool = True,
+        clk_period: float = 1,
+        clk_units: str = "ns",
+    ):
+        """Initialise the base testbench.
 
         Args:
             dut: Pointer to the DUT
@@ -47,23 +49,23 @@ class BaseBench:
         self.clk = getattr(dut, clk)
         self.rst = getattr(dut, rst)
         # Clock driving
-        self.clk_drive  = clk_drive
+        self.clk_drive = clk_drive
         self.clk_period = clk_period
-        self.clk_units  = clk_units
+        self.clk_units = clk_units
         # Expose logging methods
-        self.debug   = dut._log.debug
-        self.info    = dut._log.info
+        self.debug = dut._log.debug
+        self.info = dut._log.info
         self.warning = dut._log.warning
-        self.error   = dut._log.error
+        self.error = dut._log.error
         # Create a scoreboard
-        imm_fail = (os.environ.get("FAIL_IMMEDIATELY", "no").lower() == "yes")
+        imm_fail = os.environ.get("FAIL_IMMEDIATELY", "no").lower() == "yes"
         self.scoreboard = Scoreboard(self, fail_immediately=imm_fail)
         # Track drivers and monitors
-        self.drivers  = {}
+        self.drivers = {}
         self.monitors = {}
 
     async def initialise(self):
-        """ Initialise the DUT's I/O """
+        """Initialise the DUT's I/O"""
         self.rst.value = 1
         for driver in self.drivers.values():
             driver.intf.initialise(IORole.opposite(driver.intf.role))
@@ -71,7 +73,7 @@ class BaseBench:
             monitor.intf.initialise(IORole.opposite(monitor.intf.role))
 
     async def reset(self, init=True, wait_during=20, wait_after=1):
-        """ Reset the DUT.
+        """Reset the DUT.
 
         Args:
             init       : Initialise the DUT's I/O
@@ -90,7 +92,7 @@ class BaseBench:
         await ClockCycles(self.clk, wait_after)
 
     def __getattr__(self, key):
-        """ Pass through accesses to signals on the DUT.
+        """Pass through accesses to signals on the DUT.
 
         Args:
             key: Name of the attribute
@@ -100,7 +102,7 @@ class BaseBench:
         except Exception:
             return getattr(self.dut, key)
 
-    def register_driver(self, name : str, inst : Driver) -> None:
+    def register_driver(self, name: str, inst: Driver) -> None:
         """
         Register a driver with the testbench, will be included in the shutdown
         handling.
@@ -114,7 +116,7 @@ class BaseBench:
         inst.name = name
         setattr(self, name, inst)
 
-    def register_monitor(self, name : str, inst : BaseMonitor) -> None:
+    def register_monitor(self, name: str, inst: BaseMonitor) -> None:
         """
         Register a monitor with the testbench, creating an expected transaction
         list and linking it to the scoreboard.
@@ -127,13 +129,13 @@ class BaseBench:
         self.monitors[name] = inst
         inst.name = name
         setattr(self, name, inst)
-        def _compare_func(got : Any):
-            return self.__compare_transactions(inst, got)
-        self.scoreboard.add_interface(inst,
-                                      inst.expected,
-                                      compare_fn=_compare_func)
 
-    def __compare_transactions(self, monitor : BaseMonitor, got : Any) -> None:
+        def _compare_func(got: Any):
+            return self.__compare_transactions(inst, got)
+
+        self.scoreboard.add_interface(inst, inst.expected, compare_fn=_compare_func)
+
+    def __compare_transactions(self, monitor: BaseMonitor, got: Any) -> None:
         """
         Check that the received transaction of a monitor and the next expected
         transaction in the monitor's queue match one another, and verbosely
@@ -146,30 +148,34 @@ class BaseBench:
         # Pop the next expected transaction
         if len(monitor.expected) == 0:
             raise Exception(f"No expected packets queued on monitor {monitor.name}")
-        exp     = monitor.expected.pop(0)
-        fmt_int = lambda x: (hex(x) if not isinstance(x, Enum) and
-                                       isinstance(x, int) and
-                                       x > 9 else str(x))
+        exp = monitor.expected.pop(0)
+
+        def fmt_int(x):
+            return (
+                hex(x)
+                if not isinstance(x, Enum) and isinstance(x, int) and x > 9
+                else str(x)
+            )
+
         # Check to see expected transaction matches received data
         # NOTE: Monitor's may provide a 'compare' method to override '!='
-        if (
-            (monitor.compare is     None and exp != got                   ) or
-            (monitor.compare is not None and not monitor.compare(got, exp))
+        if (monitor.compare is None and exp != got) or (
+            monitor.compare is not None and not monitor.compare(got, exp)
         ):
             self.error(
                 f"Unexpected {type(exp).__name__} received by {monitor.name} at "
                 f"{get_sim_time('ns')} ns:"
             )
-            max_key = max((len(x) for x in vars(exp).keys()))
+            max_key = max(len(x) for x in vars(exp).keys())
             entries = []
             for key, exp_val in vars(exp).items():
                 got_val = getattr(got, key)
                 exp_str = fmt_int(exp_val)
                 got_str = fmt_int(got_val)
                 entries.append((key, exp_str, got_str))
-            max_key = max((len(x[0]) for x in entries))
-            max_exp = max((len(x[1]) for x in entries))
-            max_got = max((len(x[2]) for x in entries))
+            max_key = max(len(x[0]) for x in entries)
+            max_exp = max(len(x[1]) for x in entries)
+            max_got = max(len(x[2]) for x in entries)
             for key, exp, got in entries:
                 self.info(
                     f" - [{[' ','!'][exp != got]}] {key:<{max_key}s} - "
@@ -180,7 +186,7 @@ class BaseBench:
                 assert self.scoreboard.errors == 0
 
     async def close_down(self) -> None:
-        """ Wait for all drivers and monitors to drain """
+        """Wait for all drivers and monitors to drain"""
         # Wait for all drivers to return to idle
         for key, driver in self.drivers.items():
             self.info(f"Waiting for driver '{key}' to go idle")
@@ -192,24 +198,28 @@ class BaseBench:
 
     @classmethod
     def testcase(cls, *args, reset=True, **kwargs) -> None:
-        """ Custom testcase declaration, wraps test with bench class"""
-        class _testcase(cocotb.test):
+        """Custom testcase declaration, wraps test with bench class"""
+
+        class _Testcase(cocotb.test):
             def __call__(self, dut, *args, **kwargs):
                 async def __run_test():
                     tb = cls(dut)
                     if tb.clk_drive:
-                        cocotb.start_soon(Clock(tb.clk,
-                                                tb.clk_period,
-                                                units=tb.clk_units).start())
+                        cocotb.start_soon(
+                            Clock(tb.clk, tb.clk_period, units=tb.clk_units).start()
+                        )
                     if reset:
                         tb.info("Resetting the DUT")
                         await tb.reset()
                     await self._func(tb, *args, **kwargs)
                     await tb.close_down()
                     raise tb.scoreboard.result
+
                 return cocotb.decorators.RunningTest(__run_test(), self)
+
         def _do_decorate(func):
-            # _testcase acts as a function which returns a decorator, hence the
+            # _Testcase acts as a function which returns a decorator, hence the
             # double function call
-            return _testcase(*args, **kwargs)(func)
+            return _Testcase(*args, **kwargs)(func)
+
         return _do_decorate

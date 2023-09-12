@@ -14,7 +14,7 @@
 
 from .bench import BaseBench
 from .driver import BaseDriver
-from .io import IORole, BaseIO
+from .io import BaseIO, IORole
 from .monitor import BaseMonitor
 
 assert all((BaseBench, BaseDriver, IORole, BaseIO, BaseMonitor))

@@ -15,11 +15,12 @@
 from cocotb.triggers import RisingEdge
 from cocotb_bus.monitors import Monitor
 
+
 class BaseMonitor(Monitor):
-    """ Base class for monitors """
+    """Base class for monitors"""
 
     def __init__(self, entity, clock, reset, intf, name=None, compare=None):
-        """ Initialise the BaseMonitor instance.
+        """Initialise the BaseMonitor instance.
 
         Args:
             entity : Pointer to the testbench/DUT
@@ -29,12 +30,12 @@ class BaseMonitor(Monitor):
             name   : Optional name of the monitor (defaults to the class)
             compare: Function to compare transactions
         """
-        self.name     = name or type(self).__name__
-        self.entity   = entity
-        self.clock    = clock
-        self.reset    = reset
-        self.intf     = intf
-        self.compare  = compare
+        self.name = name or type(self).__name__
+        self.entity = entity
+        self.clock = clock
+        self.reset = reset
+        self.intf = intf
+        self.compare = compare
         self.expected = []
         super().__init__()
 
@@ -43,5 +44,7 @@ class BaseMonitor(Monitor):
         while self.expected:
             if num_expected is None or len(self.expected) < (0.5 * num_expected):
                 num_expected = len(self.expected)
-                self.entity._log.info(f"Monitor '{self.name}' has {num_expected} transactions left")
+                self.entity._log.info(
+                    f"Monitor '{self.name}' has {num_expected} transactions left"
+                )
             await RisingEdge(self.clock)
