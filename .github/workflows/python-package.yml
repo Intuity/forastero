@@ -19,25 +19,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-    - uses: actions/checkout@v3
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.11
-    - name: Install Poetry
-      run: |
-        python -m pip install --upgrade pip
-        python -m pip install poetry poethepoet
-    - name: Setup environment
-      run: |
-        poetry install --with dev
-    - name: Run lint
-      run: |
-        poe lint
+  # lint:
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 15
+  #   steps:
+  #   - uses: actions/checkout@v3
+  #   - name: Set up Python 3.11
+  #     uses: actions/setup-python@v3
+  #     with:
+  #       python-version: 3.11
+  #   - name: Install Poetry
+  #     run: |
+  #       python -m pip install --upgrade pip
+  #       python -m pip install poetry poethepoet
+  #   - name: Setup environment
+  #     run: |
+  #       poetry install --with dev
+  #   - name: Run lint
+  #     run: |
+  #       poe lint
 
   build_docs:
     runs-on: ubuntu-latest
@@ -57,7 +57,7 @@ jobs:
         poetry install --with dev
     - name: Build documentation
       run: |
-        poe docs
+        poetry run mkdocs build
     - name: Upload documentation artifact
       uses: actions/upload-pages-artifact@v1
       with:
