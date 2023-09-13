@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import dataclasses
 from collections.abc import Callable
 from enum import Enum, auto
 
@@ -24,6 +25,11 @@ from .transaction import BaseTransaction
 
 class MonitorEvent(Enum):
     CAPTURE = auto()
+
+
+@dataclasses.dataclass()
+class MonitorStatistics:
+    captured: int = 0
 
 
 class BaseMonitor(Component):
@@ -41,6 +47,7 @@ class BaseMonitor(Component):
 
     def __init__(self, *args, **kwds) -> None:
         super().__init__(*args, **kwds)
+        self.stats = MonitorStatistics()
         cocotb.start_soon(self._monitor_loop())
 
     async def _monitor_loop(self) -> None:
@@ -49,6 +56,7 @@ class BaseMonitor(Component):
         await RisingEdge(self.clk)
 
         def _capture(obj: BaseTransaction):
+            self.stats.captured += 1
             self.publish(MonitorEvent.CAPTURE, obj)
 
         while True:
