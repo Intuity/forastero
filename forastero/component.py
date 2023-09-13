@@ -17,7 +17,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from enum import Enum
 from random import Random
-from typing import Any
+from typing import Any, ClassVar
 
 from cocotb.handle import ModifiableObject
 from cocotb.log import _COCOTB_LOG_LEVEL_DEFAULT, SimLog
@@ -39,6 +39,9 @@ class Component:
     :param name:     Unique name for this component instance (optional)
     :param blocking: Whether this component should block shutdown (default: True)
     """
+
+    # Tracks all component instances
+    COMPONENTS: ClassVar[list["Component"]] = []
 
     def __init__(
         self,
@@ -66,6 +69,7 @@ class Component:
         self.log.setLevel(_COCOTB_LOG_LEVEL_DEFAULT)
         self._lock = asyncio.Lock()
         self._handlers = defaultdict(list)
+        Component.COMPONENTS.append(self)
 
     def seed(self, random: Random) -> None:
         """

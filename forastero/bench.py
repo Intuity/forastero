@@ -221,11 +221,28 @@ class BaseBench:
         class _Testcase(cocotb.test):
             def __call__(self, dut, *args, **kwargs):
                 async def _run_test():
+                    # Clear components registered from previous runs
+                    Component.COMPONENTS.clear()
+                    # Create a testbench instance
                     tb = cls(dut)
+                    # Check all components have been registered
+                    missing = 0
+                    for comp in Component.COMPONENTS:
+                        if comp not in tb.components.values():
+                            tb.error(
+                                f"{type(comp).__name__} '{comp.name}' has "
+                                f"not been registered with the testbench"
+                            )
+                            missing += 1
+                    assert (
+                        missing == 0
+                    ), "Some bench components have not been registered"
+                    # If clock driving specified, start the clock
                     if tb.clk_drive:
                         cocotb.start_soon(
                             Clock(tb.clk, tb.clk_period, units=tb.clk_units).start()
                         )
+                    # If reset requested, run the sequence
                     if reset:
                         tb.info("Resetting the DUT")
                         await tb.reset()
