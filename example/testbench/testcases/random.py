@@ -21,11 +21,13 @@ from ..testbench import Testbench
 
 
 @Testbench.testcase()
-async def random(tb: Testbench):
+@Testbench.parameter("packets")
+@Testbench.parameter("delay")
+async def random(tb: Testbench, packets: int = 1000, delay: int = 5000):
     # Disable backpressure on input
     tb.x_resp.enqueue(StreamBackpressure(ready=True))
     # Queue traffic onto interfaces A & B and interleave on the exit port
-    for _ in range(1000):
+    for _ in range(packets):
         tb.a_init.enqueue(a := StreamTransaction(data=tb.random.getrandbits(32)))
         tb.b_init.enqueue(b := StreamTransaction(data=tb.random.getrandbits(32)))
         tb.scoreboard.channels["x_mon"].push_reference(a, b)
@@ -43,6 +45,6 @@ async def random(tb: Testbench):
 
     # Register a long-running coroutine
     async def _wait():
-        await ClockCycles(tb.clk, 8000)
+        await ClockCycles(tb.clk, delay)
 
     tb.register("wait", _wait())

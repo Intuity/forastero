@@ -13,10 +13,13 @@
 # limitations under the License.
 
 import asyncio
+import json
 import os
 import random
-from collections.abc import Coroutine
-from typing import Any
+from collections import defaultdict
+from collections.abc import Callable, Coroutine
+from pathlib import Path
+from typing import Any, ClassVar
 
 import cocotb
 from cocotb.clock import Clock
@@ -41,6 +44,14 @@ class BaseBench:
     :param clk_period: Tick period for the primary clock
     :param clk_units:  Units of the primary clock's period
     """
+
+    TEST_REQ_PARAMS: ClassVar[dict[str, set[str]]] = defaultdict(set)
+    PARAM_FILE_PATH: ClassVar[str] = os.environ.get("TEST_PARAMS", None)
+    PARSED_PARAMS: ClassVar[dict[str, Any]] = (
+        json.loads(Path(PARAM_FILE_PATH).read_text(encoding="utf-8"))
+        if PARAM_FILE_PATH
+        else {}
+    )
 
     def __init__(
         self,
@@ -72,7 +83,8 @@ class BaseBench:
         self.components = {}
         self.processes = {}
         # Random seeding
-        self.seed = 0
+        self.seed = int(self.PARSED_PARAMS.get("seed", 0))
+        self.info(f"Bench initialised with random seed {self.seed}")
         self.random = random.Random(self.seed)
         # Events
         self.evt_ready = Event()
@@ -196,7 +208,7 @@ class BaseBench:
         shutdown_loops=2,
         shutdown_delay=100,
         **kwargs,
-    ) -> None:
+    ) -> Callable:
         """
         Custom testcase declaration, wraps test with bench class
 
@@ -222,8 +234,15 @@ class BaseBench:
                     # Mark ready
                     tb.evt_ready.set()
 
+                    # Are there any parameters for this test?
+                    params = {
+                        x: cls.PARSED_PARAMS[x]
+                        for x in cls.TEST_REQ_PARAMS[self._func]
+                        if x in cls.PARSED_PARAMS
+                    }
+
                     async def _inner():
-                        await self._func(tb, *args, **kwargs)
+                        await self._func(tb, *args, **kwargs, **params)
                         await tb.close_down(loops=shutdown_loops, delay=shutdown_delay)
 
                     # Run with a timeout if specified
@@ -243,3 +262,19 @@ class BaseBench:
             return _Testcase(*args, **kwargs)(func)
 
         return _do_decorate
+
+    @classmethod
+    def parameter(cls, name: str) -> Callable:
+        """
+        Decorator for defining a parameter of a testcase that can be overridden
+        from a parameter file identified by the `TEST_PARAMS` environment
+        variable.
+
+        :param name: Name of the parameter
+        """
+
+        def _inner(method: Callable) -> Callable:
+            cls.TEST_REQ_PARAMS[method].add(name)
+            return method
+
+        return _inner

@@ -29,5 +29,8 @@ TOPLEVEL = arbiter
 export PYTHONPATH := $(PYTHONPATH):$(abspath ..)
 MODULE = testbench
 
+# Parameters file
+export TEST_PARAMS := $(readlink -f params.json)
+
 # include cocotb's make rules to take care of the simulator setup
 include $(shell cocotb-config --makefiles)/Makefile.sim
