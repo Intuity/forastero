@@ -68,6 +68,7 @@ class BaseDriver(Component):
         """Main loop for driving transactions onto the interface"""
         await self.tb.ready()
         await RisingEdge(self.clk)
+        self._ready.set()
         while True:
             obj = await self._queue.get()
             while self.rst.value == 1:

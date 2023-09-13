@@ -54,6 +54,7 @@ class BaseMonitor(Component):
         """Main loop for monitoring transactions on the interface"""
         await self.tb.ready()
         await RisingEdge(self.clk)
+        self._ready.set()
 
         def _capture(obj: BaseTransaction):
             self.stats.captured += 1

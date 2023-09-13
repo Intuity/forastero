@@ -251,6 +251,10 @@ class BaseBench:
                     # Mark ready
                     tb.evt_ready.set()
 
+                    # Wait for all components to be ready
+                    for comp in tb.components.values():
+                        await comp.ready()
+
                     # Are there any parameters for this test?
                     params = {
                         x: cls.PARSED_PARAMS[x]
