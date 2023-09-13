@@ -14,6 +14,7 @@
 
 import asyncio
 import json
+import logging
 import os
 import random
 from collections import defaultdict
@@ -24,6 +25,7 @@ from typing import Any, ClassVar
 import cocotb
 from cocotb.clock import Clock
 from cocotb.handle import HierarchyObject, ModifiableObject
+from cocotb.log import SimLogFormatter, SimTimeContextFilter
 from cocotb.triggers import ClockCycles, Event, with_timeout
 
 from .component import Component
@@ -71,7 +73,12 @@ class BaseBench:
         self.clk_drive = clk_drive
         self.clk_period = clk_period
         self.clk_units = clk_units
-        # Expose logging methods
+        # Tee log into a file with timestamping
+        log_fh = logging.FileHandler(Path.cwd() / "sim.log")
+        log_fh.addFilter(SimTimeContextFilter())
+        log_fh.setFormatter(SimLogFormatter())
+        self._log.addHandler(log_fh)
+        # Alias logging methods
         self.debug = dut._log.debug
         self.info = dut._log.info
         self.warning = dut._log.warning
