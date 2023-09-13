@@ -70,6 +70,7 @@ class Component:
         self._lock = asyncio.Lock()
         self._handlers = defaultdict(list)
         self._ready = Event()
+        self._waiting = defaultdict(list)
         Component.COMPONENTS.append(self)
 
     async def ready(self) -> None:
@@ -103,8 +104,20 @@ class Component:
         :param event: Enumerated event
         :param obj:   Object associated to the event
         """
+        # Call direct handlers
         for handler in self._handlers[event]:
             handler(self, event, obj)
+        # Trigger pending events
+        events = self._waiting[event][:]
+        self._waiting[event].clear()
+        for event in events:
+            event.set(data=obj)
+
+    async def wait_for(self, event: Enum) -> Any:
+        evt = Event()
+        self._waiting[event].append(evt)
+        await evt.wait()
+        return evt.data
 
     async def lock(self) -> None:
         """Lock the component's internal lock"""
