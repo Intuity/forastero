@@ -89,6 +89,7 @@ class BaseBench:
         # Track components
         self.components = {}
         self.processes = {}
+        self.teardown = []
         # Random seeding
         self.seed = int(self.PARSED_PARAMS.get("seed", 0))
         self.info(f"Bench initialised with random seed {self.seed}")
@@ -170,6 +171,16 @@ class BaseBench:
         else:
             raise TypeError(f"Unsupported object: {comp_or_coro}")
 
+    def add_teardown(self, coro: Coroutine) -> None:
+        """
+        Register a coroutine to be executed after the shutdown loops have all
+        completed, can be used to check final conditions.
+
+        :param coro: Coroutine to register
+        """
+        assert asyncio.iscoroutine(coro), "Only coroutines may be added to teardown"
+        self.teardown.append(coro)
+
     async def close_down(self, loops: int = 2, delay: int = 100) -> None:
         """
         Wait for drivers, monitors, and the scoreboard to drain to ensure that
@@ -205,6 +216,9 @@ class BaseBench:
                 await proc
             # Drain the scoreboard
             await self.scoreboard.drain()
+        # Run teardown steps
+        for teardown in self.teardown:
+            await teardown
 
     @classmethod
     def testcase(
