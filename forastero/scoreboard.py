@@ -97,6 +97,22 @@ class Channel:
             await RisingEdge(self.monitor.clk)
 
 
+class MiscompareError(Exception):
+    """
+    Raises a miscomparison as an exception with associated data.
+
+    :param channel:   Channel that the miscompare occurred on
+    :param monitor:   Transaction captured by the monitor
+    :param reference: Expected transaction queued by the model
+    """
+
+    def __init__(self, channel: Channel, monitor: BaseTransaction, reference: BaseTransaction) -> None:
+        super().__init__()
+        self.channel = channel
+        self.monitor = monitor
+        self.reference = reference
+
+
 class Scoreboard:
     """
     Scoreboard for comparing captured and reference transactions. The scoreboard
@@ -146,7 +162,7 @@ class Scoreboard:
         self.log.info(monitor.tabulate(reference))
         self._mismatches.append((channel, monitor, reference))
         if self.fail_fast:
-            assert "Miscomparison caused fast failure"
+            raise MiscompareError(channel, monitor, reference)
 
     @property
     def result(self) -> bool:
