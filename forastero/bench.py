@@ -26,6 +26,7 @@ import cocotb
 from cocotb.clock import Clock
 from cocotb.handle import HierarchyObject, ModifiableObject
 from cocotb.log import SimLogFormatter, SimTimeContextFilter
+from cocotb.result import SimTimeoutError
 from cocotb.triggers import ClockCycles, Event, with_timeout
 
 from .component import Component
@@ -291,7 +292,21 @@ class BaseBench:
                     if timeout is None:
                         await _inner()
                     else:
-                        await with_timeout(_inner(), timeout, "ns")
+                        try:
+                            await with_timeout(_inner(), timeout, "ns")
+                        except SimTimeoutError as e:
+                            tb.error(f"Simulation timed out after {timeout} ns")
+                            # On timeout, detail active scoreboard channels
+                            for name, channel in tb.scoreboard.channels.items():
+                                m_dep = channel.monitor_depth
+                                r_dep = channel.reference_depth
+                                if m_dep > 0 or r_dep > 0:
+                                    tb.info(
+                                        f"Channel {name} has {m_dep} entries "
+                                        f"captured from monitor and {r_dep} "
+                                        f"entries queued from reference model"
+                                    )
+                            raise e
 
                     # Check the result
                     assert tb.scoreboard.result, "Scoreboard reported test failure"

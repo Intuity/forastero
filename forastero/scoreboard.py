@@ -46,6 +46,14 @@ class Channel:
 
         self.monitor.subscribe(MonitorEvent.CAPTURE, _sample)
 
+    @property
+    def monitor_depth(self) -> int:
+        return self._q_mon.qsize()
+
+    @property
+    def reference_depth(self) -> int:
+        return self._q_ref.qsize()
+
     def push_monitor(self, *transactions: BaseTransaction) -> None:
         """
         Push one or more captured transactions into the monitor's queue.
