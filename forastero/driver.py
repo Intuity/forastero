@@ -47,9 +47,14 @@ class BaseDriver(Component):
         cocotb.start_soon(self._driver_loop())
 
     @property
-    def busy(self):
+    def busy(self) -> bool:
         """Busy when either locked or the queue has outstanding entries"""
         return not self._queue.empty() and super().busy
+
+    @property
+    def queued(self) -> int:
+        """Return how many entries are queued up"""
+        return self._queue.qsize()
 
     def enqueue(self, transaction: BaseTransaction) -> None:
         """

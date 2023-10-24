@@ -296,7 +296,14 @@ class BaseBench:
                             await with_timeout(_inner(), timeout, "ns")
                         except SimTimeoutError as e:
                             tb.error(f"Simulation timed out after {timeout} ns")
-                            # On timeout, detail active scoreboard channels
+                            # List any busy drivers
+                            for name, driver in tb.components.items():
+                                if isinstance(driver, BaseDriver) and driver.queued > 0:
+                                    tb.info(
+                                        f"Driver {name} has {driver.queued} "
+                                        f"items remaining in its queue"
+                                    )
+                            # List any busy scoreboard channels
                             for name, channel in tb.scoreboard.channels.items():
                                 m_dep = channel.monitor_depth
                                 r_dep = channel.reference_depth
