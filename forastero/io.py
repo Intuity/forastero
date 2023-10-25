@@ -61,6 +61,7 @@ class BaseIO:
         self.__role = role
         self.__init_sigs = init_sigs[:]
         self.__resp_sigs = resp_sigs[:]
+        self.__defaults = {}
         # Pickup attributes
         self.__initiators, self.__responders = {}, {}
         for comp in self.__init_sigs:
@@ -105,6 +106,15 @@ class BaseIO:
         ).values():
             sig.value = 0
 
+    def set_default(self, comp: str, value: Any) -> None:
+        """
+        Set the default value to be returned for a signal if it is not available.
+
+        :param comp:  Component name
+        :param value: Value to return
+        """
+        self.__defaults[comp] = value
+
     def has(self, comp: str) -> bool:
         """
         Test whether a particular signal has been resolved inside the interface.
@@ -124,7 +134,7 @@ class BaseIO:
         """
         item = getattr(self, comp, None)
         if item is None:
-            return default
+            return self.__defaults.get(comp, None) if default is None else default
         else:
             raw = int(item.value)
             return (raw == 1) if len(item) == 1 else raw

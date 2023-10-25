@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import random
+import traceback
 from collections import defaultdict
 from collections.abc import Callable, Coroutine
 from pathlib import Path
@@ -267,7 +268,12 @@ class BaseBench:
                     # If reset requested, run the sequence
                     if reset:
                         tb.info("Resetting the DUT")
-                        await tb.reset()
+                        try:
+                            await tb.reset()
+                        except Exception as e:
+                            tb.error(f"Caught exception during reset: {e}")
+                            tb.error(traceback.format_exc())
+                            raise e
                         tb.info("DUT reset complete")
 
                     # Mark ready
