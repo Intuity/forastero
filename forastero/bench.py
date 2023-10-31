@@ -247,7 +247,15 @@ class BaseBench:
                     # Clear components registered from previous runs
                     Component.COMPONENTS.clear()
                     # Create a testbench instance
-                    tb = cls(dut)
+                    try:
+                        tb = cls(dut)
+                    except Exception as e:
+                        dut._log.error(
+                            f"Caught exception during {cls.__name__} constuction: "
+                            f"{e}"
+                        )
+                        dut._log.error(traceback.format_exc())
+                        raise e
                     # Check all components have been registered
                     missing = 0
                     for comp in Component.COMPONENTS:
