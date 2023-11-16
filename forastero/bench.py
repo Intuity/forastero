@@ -144,6 +144,7 @@ class BaseBench:
         name: str,
         comp_or_coro: Component | Coroutine = None,
         scoreboard: bool = True,
+        scoreboard_verbose: bool = False
     ) -> None:
         """
         Register a driver, monitor, or coroutine with the testbench. Drivers and
@@ -152,10 +153,16 @@ class BaseBench:
         the scoreboard unless explicitly requested. Coroutines must also be named
         and are required to complete before the test will shutdown.
 
-        :param name:         Name of the component or coroutine
-        :param comp_or_coro: Component instance or coroutine
-        :param scoreboard:   Only applies to monitors, controls whether it is
-                             registered with the scoreboard
+        :param name: \
+            Name of the component or coroutine
+        :param comp_or_coro: \
+            Component instance or coroutine
+        :param scoreboard: \
+            Only applies to monitors, controls whether it is registered with \
+            the scoreboard
+        :param scoreboard_verbose: \
+            Only applies to scoreboarded monitors, controls whether to log \
+            each transaction, even when they don't mismatch
         """
         assert isinstance(name, str), f"Name must be a string '{name}'"
         if asyncio.iscoroutine(comp_or_coro):
@@ -169,7 +176,7 @@ class BaseBench:
             setattr(self, name, comp_or_coro)
             comp_or_coro.seed(self.random)
             if scoreboard and isinstance(comp_or_coro, BaseMonitor):
-                self.scoreboard.attach(comp_or_coro)
+                self.scoreboard.attach(comp_or_coro, verbose=scoreboard_verbose)
         else:
             raise TypeError(f"Unsupported object: {comp_or_coro}")
 
@@ -333,6 +340,7 @@ class BaseBench:
                     assert tb.scoreboard.result, "Scoreboard reported test failure"
 
                 return cocotb.decorators._RunningTest(_run_test(), self)
+            
 
         def _do_decorate(func):
             # _testcase acts as a function which returns a decorator, hence the

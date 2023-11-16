@@ -85,7 +85,7 @@ class Channel:
         next_ref = await self._q_ref.get()
         return next_mon, next_ref
 
-    async def loop(self, mismatch: Callable) -> None:
+    async def loop(self, mismatch: Callable, match: Callable | None = None) -> None:
         """
         Continuously dequeue pairs of transactions from the monitor and reference
         queues and report mismatches to the scoreboard via the callback.
@@ -98,6 +98,8 @@ class Channel:
             mon, ref = await self.dequeue()
             if mon != ref:
                 mismatch(self, mon, ref)
+            elif match is not None:
+                match(self, mon, ref)
 
     async def drain(self) -> None:
         """Block until the channel's monitor and reference queues empty"""
@@ -137,16 +139,20 @@ class Scoreboard:
         self.log.setLevel(_COCOTB_LOG_LEVEL_DEFAULT)
         self.channels: dict[str, Channel] = {}
 
-    def attach(self, monitor: BaseMonitor) -> None:
+    def attach(self, monitor: BaseMonitor, verbose=False) -> None:
         """
         Attach a monitor to the scoreboard, creating and scheduling a new
         channel in the process.
 
         :param monitor: The monitor to attach
+        :param verbose: Whether to tabulate matches as well as mismatches
         """
         assert monitor.name not in self.channels, f"Monitor known for '{monitor.name}'"
         self.channels[monitor.name] = (chan := Channel(monitor, self.log))
-        cocotb.start_soon(chan.loop(self._mismatch))
+        if verbose:
+            cocotb.start_soon(chan.loop(self._mismatch, self._match))
+        else:
+            cocotb.start_soon(chan.loop(self._mismatch))
 
     async def drain(self) -> None:
         """Block until all chains of the scoreboard have been drained"""
@@ -171,6 +177,19 @@ class Scoreboard:
         self._mismatches.append((channel, monitor, reference))
         if self.fail_fast:
             raise MiscompareError(channel, monitor, reference)
+
+    def _match(
+        self, channel: Channel, monitor: BaseTransaction, reference: BaseTransaction
+    ) -> None:
+        """
+        Callback whenever a channel detects a match between captured and
+        reference objects, only called if monitor attached with `verbose`.
+
+        :param channel:   The channel reporting the mismatch
+        :param monitor:   The transaction captured by a monitor
+        :param reference: The reference transaction produced by a model
+        """
+        self.log.info(monitor.tabulate(reference))
 
     @property
     def result(self) -> bool:
