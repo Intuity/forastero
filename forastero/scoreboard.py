@@ -117,6 +117,8 @@ class Channel:
             await RisingEdge(self.monitor.clk)
         # Wait for the lock to ensure a comparison is not still underway
         await self._lock.acquire()
+        # Release the lock (in case we call drain multiple times)
+        self._lock.release()
 
 
 class MiscompareError(Exception):
