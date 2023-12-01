@@ -17,7 +17,7 @@ from typing import Any
 
 import cocotb
 from cocotb.log import _COCOTB_LOG_LEVEL_DEFAULT, SimLog
-from cocotb.triggers import Event, Lock, RisingEdge
+from cocotb.triggers import Event, First, Lock, RisingEdge
 
 from .monitor import BaseMonitor, MonitorEvent
 from .transaction import BaseTransaction
@@ -35,11 +35,18 @@ class Queue:
 
     def __init__(self) -> None:
         self._entries = []
-        self._on_push = []
+        self._on_push = None
 
     @property
     def level(self) -> int:
         return len(self._entries)
+
+    @property
+    def on_push_event(self) -> Event:
+        """ Expose the event that will be fired on the next push """
+        if self._on_push is None:
+            self._on_push = Event()
+        return self._on_push
 
     def push(self, data: Any) -> None:
         """
@@ -49,9 +56,9 @@ class Queue:
         :param data: Data to push into the queue
         """
         self._entries.append(data)
-        for event in self._on_push:
-            event.set()
-        self._on_push = []
+        if self._on_push is not None:
+            self._on_push.set()
+        self._on_push = None
 
     async def pop(self) -> Any:
         """
@@ -63,10 +70,9 @@ class Queue:
             await self.wait()
         return self._entries.pop(0)
 
-    async def wait(self) -> None:
+    def wait(self) -> None:
         """ Register an 'on-push' event and wait for it to be set by a push """
-        self._on_push.append(evt := Event())
-        await evt.wait()
+        return self.on_push_event.wait()
 
     def peek(self) -> Any:
         if len(self._entries) == 0:
@@ -213,18 +219,19 @@ class FunnelChannel(Channel):
         :returns: Tuple of the monitor transaction and reference transaction
         """
         # Wait for monitor to capture a transaction
-        next_mon = await self._q_mon.pop()
+        await self._q_mon.wait()
         # Once a monitor transaction arrives, lock out the drain procedure
         await self._lock.acquire()
         # Peek at the front of all of the queues
         while True:
+            next_mon = self._q_mon.peek()
             for queue in self._q_ref.values():
                 if queue.level > 0 and queue.peek() == next_mon:
+                    await self._q_mon.pop()
                     next_ref = await queue.pop()
                     return next_mon, next_ref
             # Wait for a reference object to be pushed to any queue
-            await asyncio.wait(*(x.wait() for x in self._q_ref.values()),
-                               return_when=asyncio.FIRST_COMPLETED)
+            await First(*(x.on_push_event.wait() for x in self._q_ref.values()))
 
 
 class MiscompareError(Exception):
