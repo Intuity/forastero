@@ -19,6 +19,7 @@ from enum import Enum
 from random import Random
 from typing import Any, ClassVar
 
+import cocotb
 from cocotb.handle import ModifiableObject
 from cocotb.log import _COCOTB_LOG_LEVEL_DEFAULT, SimLog
 from cocotb.triggers import Event, RisingEdge
@@ -106,7 +107,9 @@ class Component:
         """
         # Call direct handlers
         for handler in self._handlers[event]:
-            handler(self, event, obj)
+            call = handler(self, event, obj)
+            if asyncio.iscoroutine(call):
+                cocotb.start_soon(call)
         # Trigger pending events
         events = self._waiting[event][:]
         self._waiting[event].clear()

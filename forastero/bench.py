@@ -144,7 +144,8 @@ class BaseBench:
         name: str,
         comp_or_coro: Component | Coroutine = None,
         scoreboard: bool = True,
-        scoreboard_verbose: bool = False
+        scoreboard_verbose: bool = False,
+        scoreboard_queues: list[str] | None = None,
     ) -> None:
         """
         Register a driver, monitor, or coroutine with the testbench. Drivers and
@@ -153,16 +154,16 @@ class BaseBench:
         the scoreboard unless explicitly requested. Coroutines must also be named
         and are required to complete before the test will shutdown.
 
-        :param name: \
-            Name of the component or coroutine
-        :param comp_or_coro: \
-            Component instance or coroutine
-        :param scoreboard: \
-            Only applies to monitors, controls whether it is registered with \
-            the scoreboard
-        :param scoreboard_verbose: \
-            Only applies to scoreboarded monitors, controls whether to log \
-            each transaction, even when they don't mismatch
+        :param name:         Name of the component or coroutine
+        :param comp_or_coro: Component instance or coroutine
+        :param scoreboard:   Only applies to monitors, controls whether it is
+                             registered with the scoreboard
+        :param scoreboard_verbose: Only applies to scoreboarded monitors,
+                                   controls whether to log each transaction, even
+                                   when they don't mismatch
+        :param scoreboard_queues:  When a list of queues is provided, the
+                                   scoreboard infers use of a funnel-type
+                                   channel
         """
         assert isinstance(name, str), f"Name must be a string '{name}'"
         if asyncio.iscoroutine(comp_or_coro):
@@ -176,7 +177,9 @@ class BaseBench:
             setattr(self, name, comp_or_coro)
             comp_or_coro.seed(self.random)
             if scoreboard and isinstance(comp_or_coro, BaseMonitor):
-                self.scoreboard.attach(comp_or_coro, verbose=scoreboard_verbose)
+                self.scoreboard.attach(comp_or_coro,
+                                       verbose=scoreboard_verbose,
+                                       queues=scoreboard_queues)
         else:
             raise TypeError(f"Unsupported object: {comp_or_coro}")
 
