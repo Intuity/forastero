@@ -340,7 +340,6 @@ class BaseBench:
                     assert tb.scoreboard.result, "Scoreboard reported test failure"
 
                 return cocotb.decorators._RunningTest(_run_test(), self)
-            
 
         def _do_decorate(func):
             # _testcase acts as a function which returns a decorator, hence the
