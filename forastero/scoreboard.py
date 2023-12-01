@@ -13,14 +13,65 @@
 # limitations under the License.
 
 from collections.abc import Callable
+from typing import Any
 
 import cocotb
 from cocotb.log import _COCOTB_LOG_LEVEL_DEFAULT, SimLog
-from cocotb.queue import Queue
-from cocotb.triggers import Lock, RisingEdge
+from cocotb.triggers import Event, Lock, RisingEdge
 
 from .monitor import BaseMonitor, MonitorEvent
 from .transaction import BaseTransaction
+
+
+class QueueEmptyError(Exception):
+    pass
+
+
+class Queue:
+    """
+    A custom queue implementation that allows peeking onto the head of the queue,
+    which assists with the implementation of funnel-type channels.
+    """
+
+    def __init__(self) -> None:
+        self._entries = []
+        self._on_push = []
+
+    @property
+    def level(self) -> int:
+        return len(self._entries)
+
+    def push(self, data: Any) -> None:
+        """
+        Push an entry into the queue, notifying any observers that have
+        registered an 'on-push' event.
+
+        :param data: Data to push into the queue
+        """
+        self._entries.append(data)
+        for event in self._on_push:
+            event.set()
+        self._on_push = []
+
+    async def pop(self) -> Any:
+        """
+        Pop an entry from the queue, if necessary blocking until one is available.
+
+        :returns: Object from the head of the queue
+        """
+        if len(self._entries) == 0:
+            await self.wait()
+        return self._entries.pop(0)
+
+    async def wait(self) -> None:
+        """ Register an 'on-push' event and wait for it to be set by a push """
+        self._on_push.append(evt := Event())
+        await evt.wait()
+
+    def peek(self) -> Any:
+        if len(self._entries) == 0:
+            raise QueueEmptyError()
+        return self._entries[0]
 
 
 class Channel:
@@ -49,11 +100,11 @@ class Channel:
 
     @property
     def monitor_depth(self) -> int:
-        return self._q_mon.qsize()
+        return self._q_mon.level
 
     @property
     def reference_depth(self) -> int:
-        return self._q_ref.qsize()
+        return self._q_ref.level
 
     def push_monitor(self, *transactions: BaseTransaction) -> None:
         """
@@ -63,7 +114,7 @@ class Channel:
         """
         for transaction in transactions:
             assert isinstance(transaction, BaseTransaction)
-            self._q_mon.put_nowait(transaction)
+            self._q_mon.push(transaction)
 
     def push_reference(self, *transactions: BaseException) -> None:
         """
@@ -73,7 +124,7 @@ class Channel:
         """
         for transaction in transactions:
             assert isinstance(transaction, BaseTransaction)
-            self._q_ref.put_nowait(transaction)
+            self._q_ref.push(transaction)
 
     async def _dequeue(self) -> tuple[BaseTransaction, BaseTransaction]:
         """
@@ -83,11 +134,11 @@ class Channel:
         :returns: Tuple of the monitor transaction and reference transaction
         """
         # Wait for monitor to capture a transaction
-        next_mon = await self._q_mon.get()
+        next_mon = await self._q_mon.pop()
         # Once a monitor transaction arrives, lock out the drain procedure
         await self._lock.acquire()
         # Wait for the reference model to provide a transaction
-        next_ref = await self._q_ref.get()
+        next_ref = await self._q_ref.pop()
         # Return monitor-reference pair (don't release lock yet)
         return next_mon, next_ref
 
@@ -113,12 +164,67 @@ class Channel:
     async def drain(self) -> None:
         """Block until the channel's monitor and reference queues empty"""
         # Start draining
-        while not self._q_mon.empty() or not self._q_ref.empty():
+        while self.monitor_depth > 0 or self.reference_depth > 0:
             await RisingEdge(self.monitor.clk)
         # Wait for the lock to ensure a comparison is not still underway
         await self._lock.acquire()
         # Release the lock (in case we call drain multiple times)
         self._lock.release()
+
+
+class FunnelChannel(Channel):
+    """
+    An extended scoreboard channel where the order of data exiting the monitor
+    is not strictly defined, often due to the hardware interleaving different
+    streams. Reference data can be pushed into one or more named queues and when
+    monitor packets arrive any queue head is valid.
+    """
+
+    def __init__(self,
+                 monitor: BaseMonitor,
+                 log: SimLog,
+                 ref_queues: list[str]) -> None:
+        super().__init__(monitor, log)
+        self._q_ref = { x: Queue() for x in ref_queues }
+
+    @property
+    def reference_depth(self) -> int:
+        return sum(x.level for x in self._q_ref.values())
+
+    def push_reference(self, queue: str, *transactions: BaseException) -> None:
+        """
+        Push one or more captured transactions into a given reference (model)
+        queue.
+
+        :param queue:         Name of the queue to push into
+        :param *transactions: Captured transactions
+        """
+        assert isinstance(queue, str) and queue in self._q_ref
+        for transaction in transactions:
+            assert isinstance(transaction, BaseTransaction)
+            self._q_ref[queue].push(transaction)
+
+    async def _dequeue(self) -> tuple[BaseTransaction, BaseTransaction]:
+        """
+        Dequeue the top-most transaction from both the monitor and reference
+        queues, searching through the reference queues for a matching object to
+        the monitor's captured transaction.
+
+        :returns: Tuple of the monitor transaction and reference transaction
+        """
+        # Wait for monitor to capture a transaction
+        next_mon = await self._q_mon.pop()
+        # Once a monitor transaction arrives, lock out the drain procedure
+        await self._lock.acquire()
+        # Peek at the front of all of the queues
+        while True:
+            for queue in self._q_ref.values():
+                if queue.level > 0 and queue.peek() == next_mon:
+                    next_ref = await queue.pop()
+                    return next_mon, next_ref
+            # Wait for a reference object to be pushed to any queue
+            await asyncio.wait(*(x.wait() for x in self._q_ref.values()),
+                               return_when=asyncio.FIRST_COMPLETED)
 
 
 class MiscompareError(Exception):
@@ -153,20 +259,28 @@ class Scoreboard:
         self.log.setLevel(_COCOTB_LOG_LEVEL_DEFAULT)
         self.channels: dict[str, Channel] = {}
 
-    def attach(self, monitor: BaseMonitor, verbose=False) -> None:
+    def attach(self,
+               monitor: BaseMonitor,
+               verbose=False,
+               queues: list[str] | None=None) -> None:
         """
         Attach a monitor to the scoreboard, creating and scheduling a new
         channel in the process.
 
         :param monitor: The monitor to attach
         :param verbose: Whether to tabulate matches as well as mismatches
+        :param queues:  List of reference queue names
         """
         assert monitor.name not in self.channels, f"Monitor known for '{monitor.name}'"
-        self.channels[monitor.name] = (chan := Channel(monitor, self.log))
-        if verbose:
-            cocotb.start_soon(chan.loop(self._mismatch, self._match))
+        if isinstance(queues, list) and len(queues) > 0:
+            channel = FunnelChannel(monitor, self.log, queues)
         else:
-            cocotb.start_soon(chan.loop(self._mismatch))
+            channel = Channel(monitor, self.log)
+        self.channels[monitor.name] = channel
+        if verbose:
+            cocotb.start_soon(channel.loop(self._mismatch, self._match))
+        else:
+            cocotb.start_soon(channel.loop(self._mismatch))
 
     async def drain(self) -> None:
         """Block until all chains of the scoreboard have been drained"""
