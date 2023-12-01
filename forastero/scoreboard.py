@@ -107,7 +107,7 @@ class Channel:
                 mismatch(self, mon, ref)
             elif match is not None:
                 match(self, mon, ref)
-            # Release the lock once the comparison is complete
+            # Release the lock after the comparison completes
             self._lock.release()
 
     async def drain(self) -> None:
