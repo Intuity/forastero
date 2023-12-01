@@ -17,7 +17,7 @@ from collections.abc import Callable
 import cocotb
 from cocotb.log import _COCOTB_LOG_LEVEL_DEFAULT, SimLog
 from cocotb.queue import Queue
-from cocotb.triggers import RisingEdge
+from cocotb.triggers import Lock, RisingEdge
 
 from .monitor import BaseMonitor, MonitorEvent
 from .transaction import BaseTransaction
@@ -39,6 +39,7 @@ class Channel:
         self.log = log
         self._q_mon = Queue()
         self._q_ref = Queue()
+        self._lock = Lock()
 
         def _sample(mon: BaseMonitor, evt: MonitorEvent, obj: BaseTransaction) -> None:
             if mon is self.monitor and evt is MonitorEvent.CAPTURE:
@@ -74,15 +75,20 @@ class Channel:
             assert isinstance(transaction, BaseTransaction)
             self._q_ref.put_nowait(transaction)
 
-    async def dequeue(self) -> tuple[BaseTransaction, BaseTransaction]:
+    async def _dequeue(self) -> tuple[BaseTransaction, BaseTransaction]:
         """
         Dequeue the top-most transaction from both the monitor and reference
         queues.
 
         :returns: Tuple of the monitor transaction and reference transaction
         """
+        # Wait for monitor to capture a transaction
         next_mon = await self._q_mon.get()
+        # Once a monitor transaction arrives, lock out the drain procedure
+        await self._lock.acquire()
+        # Wait for the reference model to provide a transaction
         next_ref = await self._q_ref.get()
+        # Return monitor-reference pair (don't release lock yet)
         return next_mon, next_ref
 
     async def loop(self, mismatch: Callable, match: Callable | None = None) -> None:
@@ -95,16 +101,22 @@ class Channel:
                          the reference object
         """
         while True:
-            mon, ref = await self.dequeue()
+            # Wait for a monitor-reference pair to be dequeued
+            mon, ref = await self._dequeue()
             if mon != ref:
                 mismatch(self, mon, ref)
             elif match is not None:
                 match(self, mon, ref)
+            # Release the lock once the comparison is complete
+            self._lock.release()
 
     async def drain(self) -> None:
         """Block until the channel's monitor and reference queues empty"""
+        # Start draining
         while not self._q_mon.empty() or not self._q_ref.empty():
             await RisingEdge(self.monitor.clk)
+        # Wait for the lock to ensure a comparison is not still underway
+        await self._lock.acquire()
 
 
 class MiscompareError(Exception):
