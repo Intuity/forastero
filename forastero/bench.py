@@ -122,11 +122,15 @@ class BaseBench:
         # Initialise I/O
         if init:
             await self.initialise()
+        # Wait before dropping reset
+        if wait_during > 0:
             await ClockCycles(self.clk, wait_during)
         # Drop reset
         self.rst.value = 0
         # Wait for a bit
-        await ClockCycles(self.clk, wait_after)
+        if wait_after > 0:
+            self.info(f"Waiting for {wait_after} cycles")
+            await ClockCycles(self.clk, wait_after)
 
     def __getattr__(self, key: str) -> Any:
         """Pass through accesses to signals on the DUT.
@@ -154,16 +158,13 @@ class BaseBench:
         the scoreboard unless explicitly requested. Coroutines must also be named
         and are required to complete before the test will shutdown.
 
-        :param name:         Name of the component or coroutine
-        :param comp_or_coro: Component instance or coroutine
-        :param scoreboard:   Only applies to monitors, controls whether it is
-                             registered with the scoreboard
+        :param name:               Name of the component or coroutine
+        :param comp_or_coro:       Component instance or coroutine
+        :param scoreboard:         Only applies to monitors, controls whether it
+                                   is registered with the scoreboard
         :param scoreboard_verbose: Only applies to scoreboarded monitors,
-                                   controls whether to log each transaction, even
-                                   when they don't mismatch
-        :param scoreboard_queues:  When a list of queues is provided, the
-                                   scoreboard infers use of a funnel-type
-                                   channel
+                                   controls whether to log each transaction,
+                                   even when they don't mismatch
         """
         assert isinstance(name, str), f"Name must be a string '{name}'"
         if asyncio.iscoroutine(comp_or_coro):
@@ -240,15 +241,23 @@ class BaseBench:
         timeout=10000,
         shutdown_loops=2,
         shutdown_delay=100,
+        reset_init=True,
+        reset_wait_during=20,
+        reset_wait_after=1,
         **kwargs,
     ) -> Callable:
         """
         Custom testcase declaration, wraps test with bench class
 
-        :param reset:          Whether to reset the design
-        :param timeout:        Maximum run time for a test (in clock cycles)
-        :param shutdown_loops: Number of loops of the shutdown sequence
-        :param shutdown_delay: Delay between loops of the shutdown sequence
+        :param reset:             Whether to reset the design
+        :param timeout:           Maximum run time for a test (in clock cycles)
+        :param shutdown_loops:    Number of loops of the shutdown sequence
+        :param shutdown_delay:    Delay between loops of the shutdown sequence
+        :param reset_init       : Initialise the DUT's I/O
+        :param reset_wait_during: Clock cycles to hold reset active for
+                                  (defaults to 20)
+        :param reset_wait_after : Clock cycles to wait after lowering reset
+                                  (defaults to 1)
         """
 
         class _Testcase(cocotb.test):
@@ -287,7 +296,9 @@ class BaseBench:
                     if reset:
                         tb.info("Resetting the DUT")
                         try:
-                            await tb.reset()
+                            await tb.reset(init=reset_init,
+                                           wait_during=reset_wait_during,
+                                           wait_after=reset_wait_after)
                         except Exception as e:
                             tb.error(f"Caught exception during reset: {e}")
                             tb.error(traceback.format_exc())
