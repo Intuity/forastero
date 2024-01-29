@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import dataclasses
-from typing import Any
+from typing import Any, Optional
 
 from cocotb.utils import get_sim_time
 from tabulate import tabulate
@@ -43,22 +43,30 @@ class BaseTransaction:
         else:
             return value
 
-    def tabulate(self, other: "BaseTransaction") -> str:
+    def tabulate(self, other: Optional["BaseTransaction"] = None) -> str:
         """
-        Tabulate a comparison of the fields of the transaction against another
-        object, flagging wherever a mismatch is detected.
+        Tabulate the fields of this transaction, optionally comparing against
+        the fields of another object of this same type. When comparison is
+        performed, mismatches are flagged in a separate column.
 
-        :param other: The 'other' transaction
+        :param other: Optional transaction to compare against
         :returns: String of tabulated data
         """
+        # Collect table headers
+        headers = ["Field"]
+        if other is None:
+            headers.append("Data")
+        else:
+            headers += ["Captured", "Expected", "Compared?", "Match?"]
+        # Assemble rows
         rows = []
         for field in dataclasses.fields(self):
             a_val = self.format(field.name, getattr(self, field.name))
-            b_val = self.format(field.name, getattr(other, field.name))
-            flag = ["", "!!!"][field.compare and (a_val != b_val)]
-            rows.append((field.name, a_val, b_val, ["no", "yes"][field.compare], flag))
-        return tabulate(
-            rows,
-            headers=["Field", "Captured", "Expected", "Compared?", "Match?"],
-            tablefmt="grid",
-        )
+            cols = [field.name, a_val]
+            if other is not None:
+                b_val = self.format(field.name, getattr(other, field.name))
+                flag = ["", "!!!"][field.compare and (a_val != b_val)]
+                cols += [b_val, ["no", "yes"][field.compare], flag]
+            rows.append(cols)
+        # Render the table
+        return tabulate(rows, headers=headers, tablefmt="grid")

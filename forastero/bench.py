@@ -324,12 +324,14 @@ class BaseBench:
                         await tb.close_down(loops=shutdown_loops, delay=shutdown_delay)
 
                     # Run with a timeout if specified
+                    postponed = None
                     if timeout is None:
                         await _inner()
                     else:
                         try:
                             await with_timeout(_inner(), timeout, "ns")
                         except SimTimeoutError as e:
+                            postponed = e
                             tb.error(f"Simulation timed out after {timeout} ns")
                             # List any busy drivers
                             for name, driver in tb.components.items():
@@ -338,17 +340,14 @@ class BaseBench:
                                         f"Driver {name} has {driver.queued} "
                                         f"items remaining in its queue"
                                     )
-                            # List any busy scoreboard channels
-                            for name, channel in tb.scoreboard.channels.items():
-                                m_dep = channel.monitor_depth
-                                r_dep = channel.reference_depth
-                                if m_dep > 0 or r_dep > 0:
-                                    tb.info(
-                                        f"Channel {name} has {m_dep} entries "
-                                        f"captured from monitor and {r_dep} "
-                                        f"entries queued from reference model"
-                                    )
-                            raise e
+
+                    # Report status of scoreboard channels
+                    for name, channel in tb.scoreboard.channels.items():
+                        channel.report()
+
+                    # If an exception has been postponed, re-raise it now
+                    if postponed is not None:
+                        raise postponed
 
                     # Check the result
                     assert tb.scoreboard.result, "Scoreboard reported test failure"
