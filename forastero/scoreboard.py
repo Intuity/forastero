@@ -87,16 +87,20 @@ class Channel:
     both queues and tested for equivalence. Any mismatches are reported to the
     scoreboard.
 
+    :param name:    Name of this scoreboard channel
     :param monitor: Handle to the monitor capturing traffic from the DUT
     :param log:     Handle to the scoreboard log
     """
 
-    def __init__(self, monitor: BaseMonitor, log: SimLog) -> None:
+    def __init__(self, name: str, monitor: BaseMonitor, log: SimLog) -> None:
+        self.name = name
         self.monitor = monitor
         self.log = log
         self._q_mon = Queue()
         self._q_ref = Queue()
         self._lock = Lock()
+        self._matched = 0
+        self._mismatched = 0
 
         def _sample(mon: BaseMonitor, evt: MonitorEvent, obj: BaseTransaction) -> None:
             if mon is self.monitor and evt is MonitorEvent.CAPTURE:
@@ -106,11 +110,28 @@ class Channel:
 
     @property
     def monitor_depth(self) -> int:
+        """ Number of captured packets queued up by the DUT monitor """
         return self._q_mon.level
 
     @property
     def reference_depth(self) -> int:
+        """ Number of expected packets queued up by the reference model """
         return self._q_ref.level
+
+    @property
+    def matched(self) -> int:
+        """ Number of matched packets between monitor and reference model """
+        return self._matched
+
+    @property
+    def mismatched(self) -> int:
+        """ Number of mismatched packets between monitor and reference model """
+        return self._mismatched
+
+    @property
+    def total(self) -> int:
+        """ Total number of packets matched/mismatched """
+        return self._matched + self._mismatched
 
     def push_monitor(self, *transactions: BaseTransaction) -> None:
         """
@@ -161,9 +182,12 @@ class Channel:
             # Wait for a monitor-reference pair to be dequeued
             mon, ref = await self._dequeue()
             if mon != ref:
+                self._mismatched += 1
                 mismatch(self, mon, ref)
-            elif match is not None:
-                match(self, mon, ref)
+            else:
+                self._matched += 1
+                if match is not None:
+                    match(self, mon, ref)
             # Release the lock after the comparison completes
             self._lock.release()
 
@@ -177,6 +201,32 @@ class Channel:
         # Release the lock (in case we call drain multiple times)
         self._lock.release()
 
+    def report(self) -> None:
+        """
+        Report the status of this channel detailing number of entries in the
+        monitor and reference queues, and the queued transactions at the head
+        of those queues
+        """
+        # Report matches/mismatches
+        self.log.info(
+            f"Channel {self.name} paired {self.total} transactions of which "
+            f"{self.mismatched} mismatches were detected"
+        )
+        # Report outstanding transactions
+        mon_depth = self.monitor_depth
+        ref_depth = self.reference_depth
+        if mon_depth > 0 or ref_depth > 0:
+            self.log.error(
+                f"Channel {self.name} has {mon_depth} entries captured from "
+                f"monitor and {ref_depth} entries queued from reference model"
+            )
+        if mon_depth > 0:
+            self.log.info(f"Packet at head of {self.name}'s monitor queue:")
+            self.log.info(self._q_mon.peek().tabulate())
+        if ref_depth > 0:
+            self.log.info(f"Packet at head of {self.name}'s reference queue:")
+            self.log.info(self._q_ref.peek().tabulate())
+
 
 class FunnelChannel(Channel):
     """
@@ -187,10 +237,11 @@ class FunnelChannel(Channel):
     """
 
     def __init__(self,
+                 name: str,
                  monitor: BaseMonitor,
                  log: SimLog,
                  ref_queues: list[str]) -> None:
-        super().__init__(monitor, log)
+        super().__init__(name, monitor, log)
         self._q_ref = { x: Queue() for x in ref_queues }
 
     @property
@@ -280,10 +331,10 @@ class Scoreboard:
         """
         assert monitor.name not in self.channels, f"Monitor known for '{monitor.name}'"
         if isinstance(queues, list) and len(queues) > 0:
-            channel = FunnelChannel(monitor, self.log, queues)
+            channel = FunnelChannel(monitor.name, monitor, self.log, queues)
         else:
-            channel = Channel(monitor, self.log)
-        self.channels[monitor.name] = channel
+            channel = Channel(monitor.name, monitor, self.log)
+        self.channels[channel.name] = channel
         if verbose:
             cocotb.start_soon(channel.loop(self._mismatch, self._match))
         else:
@@ -307,7 +358,10 @@ class Scoreboard:
         :param monitor:   The transaction captured by a monitor
         :param reference: The reference transaction produced by a model
         """
-        self.log.error(f"{channel.monitor.name} recorded miscomparison")
+        self.log.error(
+            f"Mismatch on channel {channel.monitor.name} for transaction index "
+            f"{channel.total-1}"
+        )
         self.log.info(monitor.tabulate(reference))
         self._mismatches.append((channel, monitor, reference))
         if self.fail_fast:
