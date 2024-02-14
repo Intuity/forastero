@@ -51,11 +51,15 @@ class BaseBench:
 
     TEST_REQ_PARAMS: ClassVar[dict[str, set[str]]] = defaultdict(set)
     PARAM_FILE_PATH: ClassVar[str] = os.environ.get("TEST_PARAMS", None)
-    PARSED_PARAMS: ClassVar[dict[str, Any]] = (
-        json.loads(Path(PARAM_FILE_PATH).read_text(encoding="utf-8"))
-        if PARAM_FILE_PATH
-        else {}
-    )
+    PARSED_PARAMS: ClassVar[dict[str, Any]] = {
+        k.lower().strip(): v for k, v in
+        (json.loads(Path(PARAM_FILE_PATH).read_text(encoding="utf-8"))
+         if PARAM_FILE_PATH
+         else {
+             # Control logging verbosity
+             "verbosity": "info",
+         }).items()
+    }
 
     def __init__(
         self,
@@ -85,7 +89,9 @@ class BaseBench:
         self.info = dut._log.info
         self.warning = dut._log.warning
         self.error = dut._log.error
-        # # Create a scoreboard
+        # Set verbosity
+        dut._log.setLevel(self.verbosity)
+        # Create a scoreboard
         fail_fast = os.environ.get("FAIL_FAST", "no").lower() == "yes"
         self.scoreboard = Scoreboard(fail_fast=fail_fast)
         # Track components
@@ -98,6 +104,22 @@ class BaseBench:
         self.random = random.Random(self.seed)
         # Events
         self.evt_ready = Event()
+
+    @classmethod
+    def get_parameter(cls, name: str, default: Any = None) -> Any:
+        """
+        Read back a parameter passed in from the outside world.
+
+        :param name:    Name of the parameter to read
+        :param default: Default value to return if parameter not defined
+        :returns:       Value of the parameter or the default
+        """
+        return cls.PARSED_PARAMS.get(name.strip().lower(), default)
+
+    @property
+    def verbosity(self) -> int:
+        """ Returns the verbosity level enumeration """
+        return getattr(logging, self.get_parameter("verbosity").upper())
 
     async def ready(self) -> None:
         """Blocks until reset has completed"""
