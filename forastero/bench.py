@@ -410,8 +410,8 @@ if (outfile := BaseBench.PARSED_PARAMS.get("profiling")):
     # Register a teardown method to stop profiling when Python exits
     def _end_profile():
         yappi.stop()
-        logging.warning("Profiling summary:")
+        logging.info("Profiling summary:")
         logging.info(yappi.get_func_stats().print_all())
-        logging.warning(f"Profile data written to {outfile}")
+        logging.info(f"Profile data written to {outfile}")
         yappi.get_func_stats().save(outfile, type="pstat")
     atexit.register(_end_profile)
