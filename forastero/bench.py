@@ -405,7 +405,7 @@ class BaseBench:
 if (outfile := BaseBench.PARSED_PARAMS.get("profiling")):
     import atexit, yappi
     logging.warning("Profiling has been enabled")
-    yappi.set_clock_type("cpu")
+    yappi.set_clock_type("wall")
     yappi.start()
     # Register a teardown method to stop profiling when Python exits
     def _end_profile():
