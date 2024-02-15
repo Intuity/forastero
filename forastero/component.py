@@ -98,6 +98,16 @@ class Component:
             raise TypeError(f"Event should inherit from Enum, unlike {event}")
         self._handlers[event].append(callback)
 
+    def unsubscribe_all(self, event: Enum) -> None:
+        """
+        De-register all subscribers for a given event from this component.
+
+        :param event: Enumerated event
+        """
+        if not isinstance(event, Enum):
+            raise TypeError(f"Event should inherit from Enum, unlike {event}")
+        self._handlers[event].clear()
+
     def publish(self, event: Enum, obj: Any) -> None:
         """
         Publish an event and deliver it to any registered subscribers.

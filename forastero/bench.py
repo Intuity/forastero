@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import asyncio
+import functools
 import json
 import logging
 import os
@@ -51,11 +52,14 @@ class BaseBench:
 
     TEST_REQ_PARAMS: ClassVar[dict[str, set[str]]] = defaultdict(set)
     PARAM_FILE_PATH: ClassVar[str] = os.environ.get("TEST_PARAMS", None)
-    PARSED_PARAMS: ClassVar[dict[str, Any]] = (
-        json.loads(Path(PARAM_FILE_PATH).read_text(encoding="utf-8"))
-        if PARAM_FILE_PATH
-        else {}
-    )
+    PARAM_DEFAULTS: ClassVar[dict[str, Any]] = {
+        # Random seed
+        "seed": 0,
+        # Control logging verbosity
+        "verbosity": "info",
+        # Enable profiling by providing a path
+        "profiling": None,
+    }
 
     def __init__(
         self,
@@ -85,7 +89,9 @@ class BaseBench:
         self.info = dut._log.info
         self.warning = dut._log.warning
         self.error = dut._log.error
-        # # Create a scoreboard
+        # Set verbosity
+        dut._log.setLevel(self.verbosity)
+        # Create a scoreboard
         fail_fast = os.environ.get("FAIL_FAST", "no").lower() == "yes"
         self.scoreboard = Scoreboard(fail_fast=fail_fast)
         # Track components
@@ -93,11 +99,36 @@ class BaseBench:
         self.processes = {}
         self.teardown = []
         # Random seeding
-        self.seed = int(self.PARSED_PARAMS.get("seed", 0))
+        self.seed = int(self.get_parameter("seed", 0))
         self.info(f"Bench initialised with random seed {self.seed}")
         self.random = random.Random(self.seed)
         # Events
         self.evt_ready = Event()
+
+    @classmethod
+    @functools.cache
+    def parse_parameters(cls) -> dict[str, Any]:
+        parameters = cls.PARAM_DEFAULTS.copy()
+        with Path(cls.PARAM_FILE_PATH).open("r", encoding="utf-8") as fh:
+            for key, value in json.load(fh).items():
+                parameters[key.lower().strip()] = value
+        return parameters
+
+    @classmethod
+    def get_parameter(cls, name: str, default: Any = None) -> Any:
+        """
+        Read back a parameter passed in from the outside world.
+
+        :param name:    Name of the parameter to read
+        :param default: Default value to return if parameter not defined
+        :returns:       Value of the parameter or the default
+        """
+        return cls.parse_parameters().get(name.strip().lower(), default)
+
+    @property
+    def verbosity(self) -> int:
+        """ Returns the verbosity level enumeration """
+        return getattr(logging, self.get_parameter("verbosity").upper())
 
     async def ready(self) -> None:
         """Blocks until reset has completed"""
@@ -314,9 +345,8 @@ class BaseBench:
 
                     # Are there any parameters for this test?
                     params = {
-                        x: cls.PARSED_PARAMS[x]
+                        x: cls.get_parameter(x)
                         for x in cls.TEST_REQ_PARAMS[self._func]
-                        if x in cls.PARSED_PARAMS
                     }
 
                     async def _inner():
@@ -376,3 +406,18 @@ class BaseBench:
             return method
 
         return _inner
+
+# Start profiling when it is enabled in the parameters file
+if (outfile := BaseBench.get_parameter("profiling")):
+    import atexit, yappi
+    logging.warning("Profiling has been enabled")
+    yappi.set_clock_type("wall")
+    yappi.start()
+    # Register a teardown method to stop profiling when Python exits
+    def _end_profile():
+        yappi.stop()
+        logging.info("Profiling summary:")
+        logging.info(yappi.get_func_stats().print_all())
+        logging.info(f"Profile data written to {outfile}")
+        yappi.get_func_stats().save(outfile, type="pstat")
+    atexit.register(_end_profile)
