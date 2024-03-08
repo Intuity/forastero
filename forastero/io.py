@@ -15,6 +15,7 @@
 from enum import IntEnum
 from typing import Any
 
+from cocotb.log import SimLog
 from cocotb.handle import HierarchyObject
 
 
@@ -70,7 +71,7 @@ class BaseIO:
                 sig += f"_{self.__name}"
             sig += f"_{comp}"
             if not hasattr(self.__dut, sig):
-                dut._log.info(
+                SimLog("tb").getChild(f"io.{type(self).__name__.lower()}").info(
                     f"{type(self).__name__}: Did not find I/O component {sig} on {dut}"
                 )
                 continue
@@ -83,7 +84,7 @@ class BaseIO:
                 sig += f"_{self.__name}"
             sig += f"_{comp}"
             if not hasattr(self.__dut, sig):
-                dut._log.info(
+                SimLog("tb").getChild(f"io.{type(self).__name__.lower()}").info(
                     f"{type(self).__name__}: Did not find I/O component {sig} on {dut}"
                 )
                 continue

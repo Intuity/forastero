@@ -27,7 +27,7 @@ from typing import Any, ClassVar
 import cocotb
 from cocotb.clock import Clock
 from cocotb.handle import HierarchyObject, ModifiableObject
-from cocotb.log import SimLogFormatter, SimTimeContextFilter
+from cocotb.log import SimLog, SimLogFormatter, SimTimeContextFilter
 from cocotb.result import SimTimeoutError
 from cocotb.triggers import ClockCycles, Event, with_timeout
 
@@ -55,8 +55,9 @@ class BaseBench:
     PARAM_DEFAULTS: ClassVar[dict[str, Any]] = {
         # Random seed
         "seed": 0,
-        # Control logging verbosity
-        "verbosity": "info",
+        # Hierarchical logging control
+        # NOTE: 'tb' is the log hierarchy root
+        "verbosity": { "tb": "info", },
         # Enable profiling by providing a path
         "profiling": None,
     }
@@ -79,21 +80,26 @@ class BaseBench:
         self.clk_drive = clk_drive
         self.clk_period = clk_period
         self.clk_units = clk_units
+        # Alias logging methods
+        self.log = SimLog("tb")
+        self.debug = self.log.debug
+        self.info = self.log.info
+        self.warning = self.log.warning
+        self.error = self.log.error
         # Tee log into a file with timestamping
         log_fh = logging.FileHandler(Path.cwd() / "sim.log")
         log_fh.addFilter(SimTimeContextFilter())
         log_fh.setFormatter(SimLogFormatter())
-        self._log.addHandler(log_fh)
-        # Alias logging methods
-        self.debug = dut._log.debug
-        self.info = dut._log.info
-        self.warning = dut._log.warning
-        self.error = dut._log.error
-        # Set verbosity
-        dut._log.setLevel(self.verbosity)
+        self.log.addHandler(log_fh)
+        # Set verbosity at all specified hierarchy levels
+        for hierarchy, verbosity in self.get_parameter("verbosity").items():
+            logging.getLogger(hierarchy).setLevel(getattr(logging, verbosity.upper()))
+        # Create a child log for orchestration
+        # NOTE: This should really only be used by internal testbench processes
+        self._orch_log = self.fork_log("orchestration")
         # Create a scoreboard
         fail_fast = os.environ.get("FAIL_FAST", "no").lower() == "yes"
-        self.scoreboard = Scoreboard(fail_fast=fail_fast)
+        self.scoreboard = Scoreboard(tb=self, fail_fast=fail_fast)
         # Track components
         self.components = {}
         self.processes = {}
@@ -104,6 +110,17 @@ class BaseBench:
         self.random = random.Random(self.seed)
         # Events
         self.evt_ready = Event()
+
+    def fork_log(self, *scope: str) -> SimLog:
+        """
+        Create a new descedent of the root simulation log with a given context.
+
+        :param *scope: A particular scope as a list of strings
+        """
+        if not scope:
+            return self.log
+        else:
+            return self.log.getChild(".".join(scope))
 
     @classmethod
     @functools.cache
@@ -124,11 +141,6 @@ class BaseBench:
         :returns:       Value of the parameter or the default
         """
         return cls.parse_parameters().get(name.strip().lower(), default)
-
-    @property
-    def verbosity(self) -> int:
-        """ Returns the verbosity level enumeration """
-        return getattr(logging, self.get_parameter("verbosity").upper())
 
     async def ready(self) -> None:
         """Blocks until reset has completed"""
@@ -242,21 +254,21 @@ class BaseBench:
         # Check for consistent idleness
         for loop_idx in range(loops):
             # All drivers and monitors should be idle
-            self.info(f"Shutdown loop ({loop_idx+1}/{loops})")
+            self._orch_log.info(f"Shutdown loop ({loop_idx+1}/{loops})")
             # Wait for
             await ClockCycles(self.clk, delay)
             # Wait for all drivers to return to idle
             for driver in drivers:
-                self.info(f"Waiting for driver '{driver.name}' to go idle")
+                self._orch_log.debug(f"Waiting for driver '{driver.name}' to go idle")
                 await driver.idle()
             # Wait for all monitor queues to drain
             for monitor in monitors:
-                self.info(f"Waiting for monitor '{monitor.name}' to go idle")
+                self._orch_log.debug(f"Waiting for monitor '{monitor.name}' to go idle")
                 await monitor.idle()
             # Wait for processes
             procs, self.processes = self.processes, {}
             for name, proc in procs.items():
-                self.info(f"Waiting for process '{name}' to complete")
+                self._orch_log.debug(f"Waiting for process '{name}' to complete")
                 await proc
             # Drain the scoreboard
             await self.scoreboard.drain()
@@ -310,7 +322,7 @@ class BaseBench:
                     missing = 0
                     for comp in Component.COMPONENTS:
                         if comp not in tb.components.values():
-                            tb.error(
+                            tb._orch_log.error(
                                 f"{type(comp).__name__} '{comp.name}' has "
                                 f"not been registered with the testbench"
                             )
@@ -325,16 +337,16 @@ class BaseBench:
                         )
                     # If reset requested, run the sequence
                     if reset:
-                        tb.info("Resetting the DUT")
+                        tb._orch_log.info("Resetting the DUT")
                         try:
                             await tb.reset(init=reset_init,
                                            wait_during=reset_wait_during,
                                            wait_after=reset_wait_after)
                         except Exception as e:
-                            tb.error(f"Caught exception during reset: {e}")
-                            tb.error(traceback.format_exc())
+                            tb._orch_log.error(f"Caught exception during reset: {e}")
+                            tb._orch_log.error(traceback.format_exc())
                             raise e
-                        tb.info("DUT reset complete")
+                        tb._orch_log.info("DUT reset complete")
 
                     # Mark ready
                     tb.evt_ready.set()
@@ -349,8 +361,13 @@ class BaseBench:
                         for x in cls.TEST_REQ_PARAMS[self._func]
                     }
 
+                    # Create a forked log
+                    log = tb.fork_log("testcase", self._func.__name__)
+
+                    # Declare an intermediate function (this allows us to wrap
+                    # with a optional timeout)
                     async def _inner():
-                        await self._func(tb, *args, **kwargs, **params)
+                        await self._func(tb, log, *args, **kwargs, **params)
                         await tb.close_down(loops=shutdown_loops, delay=shutdown_delay)
 
                     # Run with a timeout if specified
@@ -362,11 +379,11 @@ class BaseBench:
                             await with_timeout(_inner(), timeout, "ns")
                         except SimTimeoutError as e:
                             postponed = e
-                            tb.error(f"Simulation timed out after {timeout} ns")
+                            tb._orch_log.error(f"Simulation timed out after {timeout} ns")
                             # List any busy drivers
                             for name, driver in tb.components.items():
                                 if isinstance(driver, BaseDriver) and driver.queued > 0:
-                                    tb.info(
+                                    tb._orch_log.info(
                                         f"Driver {name} has {driver.queued} "
                                         f"items remaining in its queue"
                                     )
