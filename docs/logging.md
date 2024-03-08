@@ -50,3 +50,8 @@ Hierarchical log verbosity is controlled via the test parameters file:
 }
 ```
 
+The verbosity control should always provide at least a `tb` root context, and
+can then provide any number of refinements for specific log contexts. For each
+context the value should map to one of the
+[Python logging level names](https://docs.python.org/3/library/logging.html#logging-levels),
+where the value is case-insensitive.
