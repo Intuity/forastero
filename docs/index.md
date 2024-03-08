@@ -93,17 +93,20 @@ as a test, Forastero replaces this with a decorator defined by the testbench
 class. For example:
 
 ```python
+from cocotb.log import SimLog
+
 from ..testbench import Testbench
 
 @Testbench.testcase()
-async def smoke(tb : Testbench):
+async def smoke(tb : Testbench, log: SimLog):
     ...
 ```
 
 As shown above, `@cocotb.test()` is replaced by `@Testbench.testcase()` - this
 performs all the same functions but replaces the `dut` argument that cocotb
-normally provides with a pointer to an instance of `Testbench` instead. This
-decorator does provide some new arguments:
+normally provides with a pointer to an instance of `Testbench` instead and
+provides a second argument called `log`. This decorator does provide some new
+arguments:
 
  * `reset` - defaults to `True`, but if set to `False` it will skip the standard
    reset and initialisation preamble of the testbench and immediately start the

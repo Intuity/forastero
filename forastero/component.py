@@ -21,7 +21,6 @@ from typing import Any, ClassVar
 
 import cocotb
 from cocotb.handle import ModifiableObject
-from cocotb.log import _COCOTB_LOG_LEVEL_DEFAULT, SimLog
 from cocotb.triggers import Event, RisingEdge
 
 from .io import BaseIO
@@ -66,8 +65,7 @@ class Component:
         self.random = Random(random.random() if random else 0)
         self.name = name or type(self).__name__
         self.blocking = blocking
-        self.log = SimLog(name=self.name)
-        self.log.setLevel(_COCOTB_LOG_LEVEL_DEFAULT)
+        self.log = self.tb.fork_log(type(self).__name__.lower(), self.name)
         self._lock = asyncio.Lock()
         self._handlers = defaultdict(list)
         self._ready = Event()

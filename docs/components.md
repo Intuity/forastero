@@ -116,11 +116,13 @@ Testcases may queue transactions onto a driver using the `enqueue` method - for
 example:
 
 ```python title="tb/testcases/random.py"
+from cocotb.log import SimLog
+
 from ..stream import StreamTransaction
 from ..testbench import Testbench
 
 @Testbench.testcase()
-async def random(tb: Testbench):
+async def random(tb: Testbench, log: SimLog):
     for _ in range(100):
         tb.stream_init.enqueue(StreamTransaction(data=tb.random.getrandbits(32)))
 ```
@@ -192,3 +194,37 @@ class Testbench(BaseBench):
 If, for any reason, you do not want a monitor to be attached to the scoreboard
 then you may provide the argument `scoreboard=False` to the `self.register(...)`
 call.
+
+## Logging
+
+Both `BaseDriver` and `BaseMonitor` inherit from `Component`, and this root class
+provides a number of utility features. One of the most useful is a hierarchical
+log specific to the driver or monitor.
+
+ * All drivers will be given a logging context of `tb.driver.<NAME>`;
+ * All monitors will be given a logging context of `tb.monitor.<NAME>`.
+
+These logs can be accessed using `self.log`, for example:
+
+```python title="tb/stream/monitor.py"
+class StreamMonitor(BaseMonitor):
+    async def monitor(self, capture) -> None:
+        while True:
+            await RisingEdge(self.clk)
+            if self.rst.value == 1:
+                continue
+            if self.io.get("valid", 1) and self.io.get("ready", 1):
+                self.log.debug("Hello! I saw a transaction!")
+                capture(StreamTransaction(data=self.io.get("data", 0)))
+```
+
+In the simulation log, you will see the logging context appear along with the
+timestamp, verbosity, and log message - for example:
+
+```
+1229.00ns INFO  tb.driver.driver_a    Starting to send transaction
+1230.00ns INFO  tb.driver.driver_b    Finished sending a transaction
+1231.00ns INFO  tb.monitor.monitor_a  Hello! I saw a transaction!
+```
+
+More details on [logging can be found here](./logging.md).

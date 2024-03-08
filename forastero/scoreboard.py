@@ -16,7 +16,7 @@ from collections.abc import Callable
 from typing import Any
 
 import cocotb
-from cocotb.log import _COCOTB_LOG_LEVEL_DEFAULT, SimLog
+from cocotb.log import SimLog
 from cocotb.triggers import Event, First, Lock, RisingEdge
 
 from .monitor import BaseMonitor, MonitorEvent
@@ -310,11 +310,11 @@ class Scoreboard:
     :param fail_fast: Stop the test as soon as a mismatch is reported (default: False)
     """
 
-    def __init__(self, fail_fast: bool = False):
+    def __init__(self, tb: "BaseBench", fail_fast: bool = False):
         self.fail_fast = fail_fast
         self._mismatches = []
-        self.log = SimLog(name="Scoreboard")
-        self.log.setLevel(_COCOTB_LOG_LEVEL_DEFAULT)
+        self.tb = tb
+        self.log = self.tb.fork_log("scoreboard")
         self.channels: dict[str, Channel] = {}
 
     def attach(self,
@@ -331,9 +331,14 @@ class Scoreboard:
         """
         assert monitor.name not in self.channels, f"Monitor known for '{monitor.name}'"
         if isinstance(queues, list) and len(queues) > 0:
-            channel = FunnelChannel(monitor.name, monitor, self.log, queues)
+            channel = FunnelChannel(
+                monitor.name, monitor, self.tb.fork_log("channel", monitor.name),
+                queues
+            )
         else:
-            channel = Channel(monitor.name, monitor, self.log)
+            channel = Channel(
+                monitor.name, monitor, self.tb.fork_log("channel", monitor.name)
+            )
         self.channels[channel.name] = channel
         if verbose:
             cocotb.start_soon(channel.loop(self._mismatch, self._match))

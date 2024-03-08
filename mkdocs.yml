@@ -31,6 +31,7 @@ markdown_extensions:
 nav:
   - Welcome: "index.md"
   - Components: "components.md"
+  - Logging: "logging.md"
   - API Reference:
     - IO: "classes/io.md"
     - Transactions: "classes/transaction.md"
