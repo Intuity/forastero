@@ -29,7 +29,8 @@ async def random_traffic(ctx: SeqContext,
     """ Generates random traffic """
     ctx.log.info(f"Generating {length} random transactions")
     for _ in range(length):
-        stream.enqueue(StreamTransaction(data=ctx.random.getrandbits(32)))
+        async with ctx.lock(stream):
+            stream.enqueue(StreamTransaction(data=ctx.random.getrandbits(32)))
 
 
 @forastero.sequence()
@@ -48,7 +49,7 @@ async def burst_on_a_only(ctx: SeqContext,
         ctx.log.info(f"Driving burst of {length} packets on stream A")
         for _ in range(length):
             stream_a.enqueue(StreamTransaction(data=ctx.random.getrandbits(32)))
-        ctx.log.info("Waiting for traffic to be sunk")
+        ctx.log.info("Waiting for stream A to sink traffic")
         await stream_a.idle()
 
 
@@ -58,15 +59,25 @@ async def random_backpressure(ctx: SeqContext,
                               stream: StreamResponder):
     """ Generates infinite random backpressure """
     ctx.log.info("Generating infinite random backpressure")
-    while True:
-        stream.enqueue(StreamBackpressure(ready=ctx.random.choice((True, False)),
-                                          cycles=ctx.random.randint(1, 10)))
-        await stream.wait_for(DriverEvent.PRE_DRIVE)
+    async with ctx.lock(stream):
+        while True:
+            stream.enqueue(StreamBackpressure(ready=ctx.random.choice((True, False)),
+                                              cycles=ctx.random.randint(1, 10)))
+            await stream.wait_for(DriverEvent.PRE_DRIVE)
 
 
 @Testbench.testcase(timeout=25000)
 async def random_seq(tb: Testbench, log: SimLog) -> None:
     tb.schedule(random_traffic(stream=tb.a_init, length=2000))
     tb.schedule(random_traffic(stream=tb.b_init, length=2000))
-    tb.schedule(burst_on_a_only(stream_a=tb.a_init, stream_b=tb.b_init))
-    tb.schedule(random_backpressure(stream=tb.x_resp))
+    for _ in range(10):
+        tb.schedule(burst_on_a_only(stream_a=tb.a_init,
+                                    stream_b=tb.b_init,
+                                    length=250))
+        # TODO: Uncommenting the sequence below will deadlock the scheduler
+        #       because they attempt to claim each others lock, this needs
+        #       further work in the sequencer to claim locks in one go
+        # tb.schedule(burst_on_a_only(stream_a=tb.b_init,
+        #                             stream_b=tb.a_init,
+        #                             length=250))
+    tb.schedule(random_backpressure(stream=tb.x_resp), blocking=False)

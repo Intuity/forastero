@@ -231,10 +231,10 @@ class BaseBench:
         else:
             raise TypeError(f"Unsupported object: {comp_or_coro}")
 
-    def schedule(self, seqname: tuple[str, BaseSequence]) -> None:
-        name, sequence = seqname
-        cocotb.start_soon(sequence(self.fork_log("sequence", name),
-                                   random.Random(self.random.random())))
+    def schedule(self, sequence: BaseSequence, blocking: bool = True) -> None:
+        cocotb.start_soon(sequence(self.fork_log("sequence"),
+                                   random.Random(self.random.random()),
+                                   blocking))
 
     def add_teardown(self, coro: Coroutine) -> None:
         """
@@ -264,7 +264,12 @@ class BaseBench:
         for loop_idx in range(loops):
             # All drivers and monitors should be idle
             self._orch_log.info(f"Shutdown loop ({loop_idx+1}/{loops})")
-            # Wait for
+            # Wait for sequences to complete
+            self._orch_log.debug("Waiting for all sequences to complete")
+            while BaseSequence.get_active() > 0:
+                await ClockCycles(self.clk, 10)
+            # Wait for minimum delay
+            self._orch_log.debug("Waiting for minimum delay")
             await ClockCycles(self.clk, delay)
             # Wait for all drivers to return to idle
             for driver in drivers:
