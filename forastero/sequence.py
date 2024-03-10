@@ -12,15 +12,59 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 from collections import defaultdict
 from random import Random
 from typing import Any, ClassVar, Callable, Self
 
 from cocotb.log import SimLog
+from cocotb.triggers import Lock
+
+from .component import Component
 
 
 class SeqLock:
-    pass
+    # Locks for components
+    _COMPONENT_LOCKS: ClassVar[dict[Component, Self]] = {}
+    # Named locks
+    _NAMED_LOCKS: ClassVar[dict[str, Self]] = {}
+
+    def __init__(self) -> None:
+        self._lock = Lock()
+
+    @classmethod
+    def get_component_lock(cls, comp: Component) -> Self:
+        if comp in cls._COMPONENT_LOCKS:
+            return cls._COMPONENT_LOCKS[comp]
+        else:
+            cls._COMPONENT_LOCKS[comp] = (lock := SeqLock())
+            return lock
+
+    @classmethod
+    def get_named_lock(cls, name: str) -> Self:
+        if name in cls._NAMED_LOCKS:
+            return cls._NAMED_LOCKS[name]
+        else:
+            cls._NAMED_LOCKS[name] = (lock := SeqLock())
+            return lock
+
+
+class SeqContext:
+
+
+    def __init__(self, log: SimLog, random: Random) -> None:
+        self.log = log
+        self.random = random
+
+    @contextlib.asynccontextmanager
+    async def lock(self, *lockables: SeqLock | Component):
+        for lock in lockables:
+            if isinstance(lock, Component):
+                comp = lock
+                lock = SeqLock._COMPONENT_LOCKS[comp]
+        # TODO Figure out how to lock and block other accesses, this might
+        #      require a proxy wrapped around the component?
+        yield True
 
 
 class BaseSequence:
@@ -106,20 +150,29 @@ class BaseSequence:
         # Check that provided components match expectation
         comps = {}
         for name, ctype in self._requires.items():
+            # Check for a missing keyword argument
             if name not in kwds:
                 raise Exception(f"No component provided for '{name}'")
+            # Check if the expected component type matches
             match = kwds[name]
             if not isinstance(match, ctype):
                 raise Exception(f"Component '{name}' is not of type {ctype.__name__}")
+            # Pickup the component
             comps[name] = match
+            # Delete from kwds (to avoid clash during expansion below)
             del kwds[name]
-        # Pickup requested locks
+            # Ensure a component lock exists
+            SeqLock.get_component_lock(match)
+        # Generate named locks
         locks = {}
         for lock in self._locks:
-            locks[lock] = type(self).LOCKS[lock]
+            locks[lock] = SeqLock.get_named_lock(lock)
         # Create a wrapper to allow log and random to be inserted by the bench
         def _inner(log: SimLog, random: Random):
-            return self._fn(log, random, **comps, **locks, **kwds)
+            # Create a context
+            ctx = SeqContext(log, random)
+            # Call the sequence
+            return self._fn(ctx, **comps, **locks, **kwds)
         # Return tuple
         return (self.name, _inner)
 

@@ -12,42 +12,61 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from random import Random
 
 import forastero
 from cocotb.log import SimLog
 from forastero.driver import DriverEvent
+from forastero.sequence import SeqContext
 
 from ..stream import StreamInitiator, StreamResponder, StreamBackpressure, StreamTransaction
 from ..testbench import Testbench
 
 @forastero.sequence()
 @forastero.requires("stream", StreamInitiator)
-async def random_traffic(log: SimLog,
-                         random: Random,
+async def random_traffic(ctx: SeqContext,
                          stream: StreamInitiator,
                          length: int = 1000):
     """ Generates random traffic """
-    log.info(f"Generating {length} random transactions")
+    ctx.log.info(f"Generating {length} random transactions")
     for _ in range(length):
-        stream.enqueue(StreamTransaction(data=random.getrandbits(32)))
+        stream.enqueue(StreamTransaction(data=ctx.random.getrandbits(32)))
+
+
+@forastero.sequence()
+@forastero.requires("stream_a", StreamInitiator)
+@forastero.requires("stream_b", StreamInitiator)
+async def burst_on_a_only(ctx: SeqContext,
+                          stream_a: StreamInitiator,
+                          stream_b: StreamInitiator,
+                          length: int = 64):
+    """ Generates a burst only on one channel """
+    ctx.log.info("Waiting for locks")
+    async with ctx.lock(stream_a, stream_b):
+        ctx.log.info("Acquired locks, waiting for streams to go idle")
+        await stream_a.idle()
+        await stream_b.idle()
+        ctx.log.info(f"Driving burst of {length} packets on stream A")
+        for _ in range(length):
+            stream_a.enqueue(StreamTransaction(data=ctx.random.getrandbits(32)))
+        ctx.log.info("Waiting for traffic to be sunk")
+        await stream_a.idle()
 
 
 @forastero.sequence()
 @forastero.requires("stream", StreamResponder)
-async def random_backpressure(log: SimLog,
-                              random: Random,
+async def random_backpressure(ctx: SeqContext,
                               stream: StreamResponder):
     """ Generates infinite random backpressure """
-    log.info("Generating infinite random backpressure")
+    ctx.log.info("Generating infinite random backpressure")
     while True:
-        stream.enqueue(StreamBackpressure(ready=random.choice((True, False)),
-                                          cycles=random.randint(1, 10)))
+        stream.enqueue(StreamBackpressure(ready=ctx.random.choice((True, False)),
+                                          cycles=ctx.random.randint(1, 10)))
         await stream.wait_for(DriverEvent.PRE_DRIVE)
 
 
-@Testbench.testcase()
+@Testbench.testcase(timeout=25000)
 async def random_seq(tb: Testbench, log: SimLog) -> None:
     tb.schedule(random_traffic(stream=tb.a_init, length=2000))
     tb.schedule(random_traffic(stream=tb.b_init, length=2000))
+    tb.schedule(burst_on_a_only(stream_a=tb.a_init, stream_b=tb.b_init))
     tb.schedule(random_backpressure(stream=tb.x_resp))
