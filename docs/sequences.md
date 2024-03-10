@@ -15,8 +15,7 @@ from ..testbench import Testbench
 @forastero.requires("stream_a", StreamInitiator)
 @forastero.requires("stream_b", StreamMonitor)
 @forastero.lock("pathway_a")
-async def stream_fast(tb: Testbench,
-                      log: SimLog,
+async def stream_fast(log: SimLog,
                       random: Random,
                       stream_a: StreamInitiator,
                       stream_b: StreamMonitor,

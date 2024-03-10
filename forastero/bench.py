@@ -35,6 +35,7 @@ from .component import Component
 from .driver import BaseDriver
 from .io import IORole
 from .monitor import BaseMonitor
+from .sequence import BaseSequence
 from .scoreboard import Scoreboard
 
 
@@ -106,6 +107,7 @@ class BaseBench:
         self.components = {}
         self.processes = {}
         self.teardown = []
+        self.sequences = []
         # Random seeding
         self.seed = int(self.get_parameter("seed", 0))
         self.info(f"Bench initialised with random seed {self.seed}")
@@ -228,6 +230,11 @@ class BaseBench:
                 )
         else:
             raise TypeError(f"Unsupported object: {comp_or_coro}")
+
+    def schedule(self, seqname: tuple[str, BaseSequence]) -> None:
+        name, sequence = seqname
+        cocotb.start_soon(sequence(self.fork_log("sequence", name),
+                                   random.Random(self.random.random())))
 
     def add_teardown(self, coro: Coroutine) -> None:
         """

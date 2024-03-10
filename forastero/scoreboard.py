@@ -282,6 +282,33 @@ class FunnelChannel(Channel):
             # Wait for a reference object to be pushed to any queue
             await First(*(x.on_push_event.wait() for x in self._q_ref.values()))
 
+    def report(self) -> None:
+        """
+        Report the status of this channel detailing number of entries in the
+        monitor and reference queues, and the queued transactions at the head
+        of those queues
+        """
+        # Report matches/mismatches
+        self.log.info(
+            f"Channel {self.name} paired {self.total} transactions of which "
+            f"{self.mismatched} mismatches were detected"
+        )
+        # Report outstanding transactions
+        mon_depth = self.monitor_depth
+        ref_depth = self.reference_depth
+        if mon_depth > 0 or ref_depth > 0:
+            self.log.error(
+                f"Channel {self.name} has {mon_depth} entries captured from "
+                f"monitor and {ref_depth} entries queued from reference model"
+            )
+        if mon_depth > 0:
+            self.log.info(f"Packet at head of {self.name}'s monitor queue:")
+            self.log.info(self._q_mon.peek().tabulate())
+        for key, queue in self._q_ref.items():
+            if queue.level > 0:
+                self.log.info(f"Packet at head of {self.name}'s reference queue '{key}':")
+                self.log.info(queue.peek().tabulate())
+
 
 class MiscompareError(Exception):
     """

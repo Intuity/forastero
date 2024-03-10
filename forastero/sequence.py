@@ -12,10 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections import defaultdict
 from random import Random
 from typing import Any, ClassVar, Callable, Self
 
 from cocotb.log import SimLog
+
+
+class SeqLock:
+    pass
 
 
 class BaseSequence:
@@ -27,26 +32,36 @@ class BaseSequence:
     """
 
     REGISTRY: ClassVar[dict[Callable, "BaseSequence"]] = {}
+    LOCKS: ClassVar[dict[str, SeqLock]] = defaultdict(SeqLock)
 
     def __init__(self, fn: Callable) -> None:
-        assert id(fn) in self.REGISTRY, "Sequencing function registered twice"
+        # Ensure that this wrapper is unique for the sequencing function
+        assert id(fn) not in type(self).REGISTRY, "Sequencing function registered twice"
+        type(self).REGISTRY[id(fn)] = self
+        # Capture variables
         self._fn = fn
         self._requires: dict[str, Any] = {}
         self._locks: list[str] = []
 
+    @property
+    def name(self) -> str:
+        return self._fn.__name__
+
     @classmethod
-    def register(cls, fn: Callable) -> Self:
+    def register(cls, fn: Callable | Self) -> Self:
         """
         Uniquely wrap a sequencing function inside a BaseSequence, returning the
         shared instance on future invocations.
 
         :param fn: The sequencing function
+        :returns:  The wrapping BaseSequence instance
         """
-        if id(fn) not in cls.REGISTRY:
-            cls.REGISTRY[id(fn)] = (seq := BaseSequence(fn))
-            return seq
-        else:
+        if isinstance(fn, BaseSequence):
+            return fn
+        elif id(fn) in cls.REGISTRY:
             return cls.REGISTRY[id(fn)]
+        else:
+            return BaseSequence(fn)
 
     def add_requirement(self, req_name: str, req_type: Any) -> Self:
         """
@@ -86,18 +101,27 @@ class BaseSequence:
         launch prepare it to be launched within a managed context.
 
         :param **kwds: Any keyword arguments
-        :return:
+        :returns:      Tuple of the sequence name and the wrapped coroutine
         """
-        from .bench import BaseBench
-        from .component import Component
-        def _inner(tb: BaseBench,
-                   log: SimLog,
-                   random: Random,
-                   components: dict[str, Component],
-                   # TODO @peterbirch: Replace 'Any' with the lock definition
-                   locks: dict[str, Any]):
-            return self._fn(tb, log, random, **components, **locks, **kwds)
-        return _inner
+        # Check that provided components match expectation
+        comps = {}
+        for name, ctype in self._requires.items():
+            if name not in kwds:
+                raise Exception(f"No component provided for '{name}'")
+            match = kwds[name]
+            if not isinstance(match, ctype):
+                raise Exception(f"Component '{name}' is not of type {ctype.__name__}")
+            comps[name] = match
+            del kwds[name]
+        # Pickup requested locks
+        locks = {}
+        for lock in self._locks:
+            locks[lock] = type(self).LOCKS[lock]
+        # Create a wrapper to allow log and random to be inserted by the bench
+        def _inner(log: SimLog, random: Random):
+            return self._fn(log, random, **comps, **locks, **kwds)
+        # Return tuple
+        return (self.name, _inner)
 
 
 def sequence() -> BaseSequence:
