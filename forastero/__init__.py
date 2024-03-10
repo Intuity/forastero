@@ -16,6 +16,7 @@ from .bench import BaseBench
 from .driver import BaseDriver, DriverEvent
 from .io import BaseIO, IORole
 from .monitor import BaseMonitor, MonitorEvent
+from .sequence import lock, requires, sequence
 from .scoreboard import Scoreboard
 from .transaction import BaseTransaction
 
@@ -30,5 +31,8 @@ assert all(
         DriverEvent,
         MonitorEvent,
         Scoreboard,
+        lock,
+        requires,
+        sequence,
     )
 )
