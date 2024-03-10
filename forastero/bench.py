@@ -57,7 +57,9 @@ class BaseBench:
         "seed": 0,
         # Hierarchical logging control
         # NOTE: 'tb' is the log hierarchy root
-        "verbosity": { "tb": "info", },
+        "verbosity": {
+            "tb": "info",
+        },
         # Enable profiling by providing a path
         "profiling": None,
     }
@@ -221,9 +223,9 @@ class BaseBench:
             setattr(self, name, comp_or_coro)
             comp_or_coro.seed(self.random)
             if scoreboard and isinstance(comp_or_coro, BaseMonitor):
-                self.scoreboard.attach(comp_or_coro,
-                                       verbose=scoreboard_verbose,
-                                       queues=scoreboard_queues)
+                self.scoreboard.attach(
+                    comp_or_coro, verbose=scoreboard_verbose, queues=scoreboard_queues
+                )
         else:
             raise TypeError(f"Unsupported object: {comp_or_coro}")
 
@@ -339,9 +341,11 @@ class BaseBench:
                     if reset:
                         tb._orch_log.info("Resetting the DUT")
                         try:
-                            await tb.reset(init=reset_init,
-                                           wait_during=reset_wait_during,
-                                           wait_after=reset_wait_after)
+                            await tb.reset(
+                                init=reset_init,
+                                wait_during=reset_wait_during,
+                                wait_after=reset_wait_after,
+                            )
                         except Exception as e:
                             tb._orch_log.error(f"Caught exception during reset: {e}")
                             tb._orch_log.error(traceback.format_exc())
@@ -357,8 +361,7 @@ class BaseBench:
 
                     # Are there any parameters for this test?
                     params = {
-                        x: cls.get_parameter(x)
-                        for x in cls.TEST_REQ_PARAMS[self._func]
+                        x: cls.get_parameter(x) for x in cls.TEST_REQ_PARAMS[self._func]
                     }
 
                     # Create a forked log
@@ -379,7 +382,9 @@ class BaseBench:
                             await with_timeout(_inner(), timeout, "ns")
                         except SimTimeoutError as e:
                             postponed = e
-                            tb._orch_log.error(f"Simulation timed out after {timeout} ns")
+                            tb._orch_log.error(
+                                f"Simulation timed out after {timeout} ns"
+                            )
                             # List any busy drivers
                             for name, driver in tb.components.items():
                                 if isinstance(driver, BaseDriver) and driver.queued > 0:
@@ -389,7 +394,7 @@ class BaseBench:
                                     )
 
                     # Report status of scoreboard channels
-                    for name, channel in tb.scoreboard.channels.items():
+                    for _, channel in tb.scoreboard.channels.items():
                         channel.report()
 
                     # If an exception has been postponed, re-raise it now
@@ -424,12 +429,17 @@ class BaseBench:
 
         return _inner
 
+
 # Start profiling when it is enabled in the parameters file
-if (outfile := BaseBench.get_parameter("profiling")):
-    import atexit, yappi
+if outfile := BaseBench.get_parameter("profiling"):
+    import atexit
+
+    import yappi
+
     logging.warning("Profiling has been enabled")
     yappi.set_clock_type("wall")
     yappi.start()
+
     # Register a teardown method to stop profiling when Python exits
     def _end_profile():
         yappi.stop()
@@ -437,4 +447,5 @@ if (outfile := BaseBench.get_parameter("profiling")):
         logging.info(yappi.get_func_stats().print_all())
         logging.info(f"Profile data written to {outfile}")
         yappi.get_func_stats().save(outfile, type="pstat")
+
     atexit.register(_end_profile)

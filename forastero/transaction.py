@@ -27,7 +27,7 @@ class BaseTransaction:
         default_factory=lambda: get_sim_time(units="ns"), compare=False
     )
 
-    def format(self, field: str, value: Any) -> str:  # noqa: A003
+    def format(self, field: str, value: Any) -> str:
         """
         Subclasses of BaseTransaction may override this to format different
         fields however they prefer.
