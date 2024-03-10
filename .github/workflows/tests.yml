@@ -20,8 +20,8 @@ jobs:
       - name : Setup Icarus Verilog
         shell: bash
         run  : |
-          apt update
-          apt install -y iverilog
+          sudo apt update -y
+          sudo apt install -y iverilog
       - name : Install Poetry and environment
         shell: bash
         run  : |
