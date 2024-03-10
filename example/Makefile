@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Get this directory
+THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+
 # Simulator options
 SIM           ?= icarus
 TOPLEVEL_LANG ?= verilog
@@ -26,11 +29,11 @@ VERILOG_SOURCES += $(abspath arbiter.sv)
 TOPLEVEL = arbiter
 
 # Testbench module
-export PYTHONPATH := $(PYTHONPATH):$(abspath ..)
+export PYTHONPATH := $(PYTHONPATH):$(THIS_DIR)
 MODULE = testbench
 
 # Parameters file
-export TEST_PARAMS := $(readlink -f params.json)
+export TEST_PARAMS := $(THIS_DIR)/params.json
 
 # include cocotb's make rules to take care of the simulator setup
 include $(shell cocotb-config --makefiles)/Makefile.sim

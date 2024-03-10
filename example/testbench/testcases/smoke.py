@@ -12,11 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from cocotb.log import SimLog
 from cocotb.triggers import ClockCycles
 
 from ..testbench import Testbench
 
 
 @Testbench.testcase()
-async def smoke(tb: Testbench):
+async def smoke(tb: Testbench, log: SimLog):
     await ClockCycles(tb.clk, 1000)
