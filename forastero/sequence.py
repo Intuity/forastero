@@ -14,14 +14,14 @@
 
 import contextlib
 import itertools
-import logging
 from collections import defaultdict
+from collections.abc import Callable
 from enum import Enum, auto
 from random import Random
-from typing import Any, ClassVar, Callable, Self
+from typing import Any, ClassVar, Generic, Self, TypeVar
 
 from cocotb.log import SimLog
-from cocotb.triggers import Lock, Timer
+from cocotb.triggers import Lock
 
 from .component import Component
 from .driver import BaseDriver
@@ -29,6 +29,13 @@ from .event import EventEmitter
 
 
 class SeqLock:
+    """
+    Wraps around cocotb's Lock primitive to also track which sequence currently
+    holds the lock.
+
+    :param name: Name of the lock
+    """
+
     # Locks for components
     _COMPONENT_LOCKS: ClassVar[dict[Component, Self]] = {}
     # Named locks
@@ -36,11 +43,17 @@ class SeqLock:
 
     def __init__(self, name: str) -> None:
         self._name = name
-        self._lock = Lock()
+        self._lock = Lock(name)
         self._locked_by: BaseSequence | None = None
 
     @classmethod
     def get_component_lock(cls, comp: Component) -> Self:
+        """
+        Retrieve the shared lock for a specific component.
+
+        :param comp: Reference to the component
+        :returns:    The shared lock instance
+        """
         if comp in cls._COMPONENT_LOCKS:
             return cls._COMPONENT_LOCKS[comp]
         else:
@@ -49,6 +62,12 @@ class SeqLock:
 
     @classmethod
     def get_named_lock(cls, name: str) -> Self:
+        """
+        Retrieve a shared named lock (distinct from all component locks).
+
+        :param name: Name of the shared lock
+        :returns:    The shared lock instance
+        """
         if name in cls._NAMED_LOCKS:
             return cls._NAMED_LOCKS[name]
         else:
@@ -57,25 +76,42 @@ class SeqLock:
 
     @property
     def locked(self) -> bool:
+        """Check if the lock is currently taken"""
         return self._lock.locked
 
-    async def acquire(self, sequence: "SeqContext") -> None:
-        if self._lock.locked and self._locked_by is sequence:
+    async def acquire(self, context: "SeqContext") -> None:
+        """
+        Attempt to acquire a lock, waiting until it becomes available.
+
+        :param context: Reference to the sequence context claiming the lock
+        """
+        assert isinstance(context, SeqContext)
+        if self._lock.locked and self._locked_by is context:
             return
         else:
             await self._lock.acquire()
-            self._locked_by = sequence
+            self._locked_by = context
 
-    def release(self, sequence: "SeqContext") -> None:
+    def release(self, context: "SeqContext") -> None:
+        """
+        Release a held lock only if the context matches the current lock holder.
+
+        :param context: Reference to the sequence context that previously claimed
+                        the lock
+        """
+        assert isinstance(context, SeqContext)
         if self._lock.locked:
-            assert self._locked_by is sequence
+            assert self._locked_by is context
             self._locked_by = None
             self._lock.release()
             # Raise unlock event
             SeqContext.SEQ_SHARED_EVENT.publish(SeqContextEvent.UNLOCKED, None)
 
 
-class SeqProxy(EventEmitter):
+C = TypeVar("C")
+
+
+class SeqProxy(EventEmitter, Generic[C]):
     """
     Wraps around a component to provide locking and masking functionality, this
     is achieved by mocking functionality of a component including intercepting
@@ -86,11 +122,9 @@ class SeqProxy(EventEmitter):
     :param lock:      The shared lock for the component
     """
 
-    def __init__(self,
-                 context: "SeqContext",
-                 component: Component,
-                 lock: SeqLock) -> None:
+    def __init__(self, context: "SeqContext", component: C, lock: SeqLock) -> None:
         super().__init__()
+        assert isinstance(component, Component)
         self._context = context
         self._component = component
         self._lock = lock
@@ -179,7 +213,9 @@ class SeqContext:
                            will be resolved to the equivalent component locks)
         """
         # Mark that locking is active
-        assert not self._locks_active, "You must release all locks before re-acquisition"
+        assert (
+            not self._locks_active
+        ), "You must release all locks before re-acquisition"
         self._locks_active = True
         # Figure out all the locks that need to be acquired
         need: list[SeqLock] = []
@@ -201,12 +237,28 @@ class SeqContext:
             await type(self).SEQ_SHARED_EVENT.wait_for(SeqContextEvent.UNLOCKED)
         # Yield the requested locks
         yield
-        # Release the locks
+        # Release any remaining locks
         self.log.debug(f"Releasing {len(lockables)} locks")
         for lock in need:
-            lock.release(self)
+            if lock._locked_by is self:
+                lock.release(self)
         # Clear locking active flag
         self._locks_active = False
+
+    def release(self, *lockables: SeqLock | SeqProxy):
+        """
+        Release one or more named or component locks, allowing other sequences
+        to move forward. Note that attempting to release a lock that the sequence
+        doesn't hold will raise an exception.
+
+        :param *lockables: References to named locks or sequence proxies (which
+                           will be resolved to the equivalent component locks)
+        """
+        for lock in lockables:
+            if isinstance(lock, SeqProxy):
+                SeqLock.get_component_lock(lock._component).release(self)
+            else:
+                lock.release(self)
 
 
 class BaseSequence:
@@ -231,7 +283,7 @@ class BaseSequence:
         self._locks: list[str] = []
 
     def __repr__(self) -> str:
-        return f"<BaseSequence name=\"{self.name}\">"
+        return f'<BaseSequence name="{self.name}">'
 
     @classmethod
     def get_active(cls) -> int:
@@ -268,8 +320,12 @@ class BaseSequence:
         """
         req_name = req_name.strip().lower().replace(" ", "_")
         assert len(req_name) > 0, "Requirement name cannot be an empty string"
-        assert req_name not in self._requires, f"Requirement already placed on {req_name}"
-        assert req_name not in self._locks, f"Requirement {req_name} clashes with a lock"
+        assert (
+            req_name not in self._requires
+        ), f"Requirement already placed on {req_name}"
+        assert (
+            req_name not in self._locks
+        ), f"Requirement {req_name} clashes with a lock"
         self._requires[req_name] = req_type
         return self
 
@@ -284,8 +340,12 @@ class BaseSequence:
         """
         lock_name = lock_name.strip().lower().replace(" ", "_")
         assert len(lock_name) > 0, "Lock name cannot be an empty string"
-        assert lock_name not in self._locks, f"Lock '{lock_name}' has already been defined"
-        assert lock_name not in self._requires, f"Lock {lock_name} clashes with a requirement"
+        assert (
+            lock_name not in self._locks
+        ), f"Lock '{lock_name}' has already been defined"
+        assert (
+            lock_name not in self._requires
+        ), f"Lock {lock_name} clashes with a requirement"
         self._locks.append(lock_name)
         return self
 
@@ -297,6 +357,7 @@ class BaseSequence:
         :param **kwds: Any keyword arguments
         :returns:      The wrapped coroutine
         """
+
         # Create a wrapper to allow log and random to be inserted by the bench
         async def _inner(log: SimLog, random: Random, blocking: bool):
             # Increment active as the sequence starts
@@ -316,7 +377,9 @@ class BaseSequence:
                 match = kwds[name]
                 del kwds[name]
                 if not isinstance(match, ctype):
-                    raise Exception(f"Component '{name}' is not of type {ctype.__name__}")
+                    raise Exception(
+                        f"Component '{name}' is not of type {ctype.__name__}"
+                    )
                 # Ensure a component lock exists
                 comp_lock = SeqLock.get_component_lock(match)
                 # Pickup the component and wrap it in a proxy
@@ -330,6 +393,7 @@ class BaseSequence:
             # Decrement active
             if blocking:
                 type(self).ACTIVE -= 1
+
         # Return wrapped coroutine
         return _inner
 

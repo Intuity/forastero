@@ -19,7 +19,8 @@ Forastero provides the following levels of hierarchy:
    extending from [BaseMonitor](./classes/monitor.md));
  * `tb.io.<X>` - used for messages emitted from a particular I/O wrapper class
    (when extending from [BaseIO](./classes/io.md));
- * `tb.testcase.<X>` - used for messages emitted from a particular testcase.
+ * `tb.testcase.<X>` - used for messages emitted from a particular testcase;
+ * `tb.sequence.<X>` - used for messages emitted from a specific sequence.
 
 These logging contexts are created using the `fork_log` method of
 [BaseBench](./classes/bench.md). If you want to introduce custom layers of

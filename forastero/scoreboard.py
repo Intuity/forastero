@@ -306,7 +306,9 @@ class FunnelChannel(Channel):
             self.log.info(self._q_mon.peek().tabulate())
         for key, queue in self._q_ref.items():
             if queue.level > 0:
-                self.log.info(f"Packet at head of {self.name}'s reference queue '{key}':")
+                self.log.info(
+                    f"Packet at head of {self.name}'s reference queue '{key}':"
+                )
                 self.log.info(queue.peek().tabulate())
 
 

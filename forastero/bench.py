@@ -35,8 +35,8 @@ from .component import Component
 from .driver import BaseDriver
 from .io import IORole
 from .monitor import BaseMonitor
-from .sequence import BaseSequence
 from .scoreboard import Scoreboard
+from .sequence import BaseSequence
 
 
 class BaseBench:
@@ -232,9 +232,7 @@ class BaseBench:
             raise TypeError(f"Unsupported object: {comp_or_coro}")
 
     def schedule(self, sequence: BaseSequence, blocking: bool = True) -> None:
-        cocotb.start_soon(sequence(self.fork_log("sequence"),
-                                   self.random,
-                                   blocking))
+        cocotb.start_soon(sequence(self.fork_log("sequence"), self.random, blocking))
 
     def add_teardown(self, coro: Coroutine) -> None:
         """

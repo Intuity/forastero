@@ -78,7 +78,7 @@ class EventEmitter:
         :param obj:   Object associated to the event
         """
         # Call direct handlers
-        for handler in (self._handlers["*"] + self._handlers[event]):
+        for handler in self._handlers["*"] + self._handlers[event]:
             call = handler(self, event, obj)
             if asyncio.iscoroutine(call):
                 cocotb.start_soon(call)

@@ -18,7 +18,13 @@ from forastero.bench import BaseBench
 from forastero.driver import DriverEvent
 from forastero.io import IORole
 
-from .stream import StreamInitiator, StreamIO, StreamMonitor, StreamResponder, StreamTransaction
+from .stream import (
+    StreamInitiator,
+    StreamIO,
+    StreamMonitor,
+    StreamResponder,
+    StreamTransaction,
+)
 
 
 class Testbench(BaseBench):
@@ -56,10 +62,9 @@ class Testbench(BaseBench):
         self.a_init.subscribe(DriverEvent.POST_DRIVE, self.model)
         self.b_init.subscribe(DriverEvent.POST_DRIVE, self.model)
 
-    def model(self,
-              driver: StreamInitiator,
-              event: DriverEvent,
-              obj: StreamTransaction) -> None:
+    def model(
+        self, driver: StreamInitiator, event: DriverEvent, obj: StreamTransaction
+    ) -> None:
         assert driver in (self.a_init, self.b_init)
         assert event == DriverEvent.POST_DRIVE
         if driver is self.a_init:
