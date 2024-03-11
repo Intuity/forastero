@@ -41,15 +41,12 @@ async def burst_on_a_only(ctx: SeqContext,
                           stream_b: StreamInitiator,
                           length: int = 64):
     """ Generates a burst only on one channel """
-    ctx.log.info("Waiting for locks")
     async with ctx.lock(stream_a, stream_b):
-        ctx.log.info("Acquired locks, waiting for streams to go idle")
         await stream_a.idle()
         await stream_b.idle()
         ctx.log.info(f"Driving burst of {length} packets on stream A")
         for _ in range(length):
             stream_a.enqueue(StreamTransaction(data=ctx.random.getrandbits(32)))
-        ctx.log.info("Waiting for stream A to sink traffic")
         await stream_a.idle()
 
 
@@ -74,10 +71,7 @@ async def random_seq(tb: Testbench, log: SimLog) -> None:
         tb.schedule(burst_on_a_only(stream_a=tb.a_init,
                                     stream_b=tb.b_init,
                                     length=250))
-        # TODO: Uncommenting the sequence below will deadlock the scheduler
-        #       because they attempt to claim each others lock, this needs
-        #       further work in the sequencer to claim locks in one go
-        # tb.schedule(burst_on_a_only(stream_a=tb.b_init,
-        #                             stream_b=tb.a_init,
-        #                             length=250))
+        tb.schedule(burst_on_a_only(stream_a=tb.b_init,
+                                    stream_b=tb.a_init,
+                                    length=250))
     tb.schedule(random_backpressure(stream=tb.x_resp), blocking=False)

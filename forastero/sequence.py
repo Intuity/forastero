@@ -16,12 +16,12 @@ import contextlib
 import itertools
 import logging
 from collections import defaultdict
-from enum import Enum
+from enum import Enum, auto
 from random import Random
 from typing import Any, ClassVar, Callable, Self
 
 from cocotb.log import SimLog
-from cocotb.triggers import Lock
+from cocotb.triggers import Lock, Timer
 
 from .component import Component
 from .driver import BaseDriver
@@ -55,24 +55,24 @@ class SeqLock:
             cls._NAMED_LOCKS[name] = (lock := SeqLock(name))
             return lock
 
-    async def lock(self, sequence: "SeqContext") -> None:
+    @property
+    def locked(self) -> bool:
+        return self._lock.locked
+
+    async def acquire(self, sequence: "SeqContext") -> None:
         if self._lock.locked and self._locked_by is sequence:
             return
         else:
             await self._lock.acquire()
-            logging.getLogger(f"tb.seqlock.{self._name}").info(
-                f"Lock {id(self._lock)} acquired by {sequence.id}"
-            )
             self._locked_by = sequence
 
     def release(self, sequence: "SeqContext") -> None:
         if self._lock.locked:
             assert self._locked_by is sequence
-            logging.getLogger(f"tb.seqlock.{self._name}").info(
-                f"Lock {id(self._lock)} released by {sequence.id}"
-            )
             self._locked_by = None
             self._lock.release()
+            # Raise unlock event
+            SeqContext.SEQ_SHARED_EVENT.publish(SeqEvent.UNLOCKED, None)
 
 
 class SeqProxy(EventEmitter):
@@ -135,13 +135,19 @@ class SeqProxy(EventEmitter):
         return self._component.idle()
 
 
+class SeqEvent(Enum):
+    UNLOCKED = auto()
+
+
 class SeqContext:
 
-    SEQ_CTX_ID = itertools.count()
+    SEQ_CTX_ID: ClassVar[dict[str, itertools.count]] = defaultdict(itertools.count)
+    SEQ_SHARED_LOCK: ClassVar[Lock] = Lock()
+    SEQ_SHARED_EVENT: ClassVar[EventEmitter] = EventEmitter()
 
     def __init__(self, sequence: "BaseSequence", log: SimLog, random: Random) -> None:
         self._sequence = sequence
-        self._ctx_id = next(type(self).SEQ_CTX_ID)
+        self._ctx_id = next(type(self).SEQ_CTX_ID[self._sequence.name])
         self.log = log.getChild(self.id)
         self.random = random
 
@@ -151,21 +157,29 @@ class SeqContext:
 
     @contextlib.asynccontextmanager
     async def lock(self, *lockables: SeqLock | SeqProxy):
-        held = []
-        # Acquire all locks
-        self.log.info(f"Acquiring {len(lockables)} locks: ")
+        # Figure out all the locks that need to be acquired
+        need: list[SeqLock] = []
         for lock in lockables:
-            # For components, first resolve to get the component lock
             if isinstance(lock, SeqProxy):
-                lock = SeqLock.get_component_lock(lock._component)
-            await lock.lock(self)
-            held.append(lock)
+                need.append(SeqLock.get_component_lock(lock._component))
+            else:
+                need.append(lock)
+        # Atomically acquire all requested locks
+        self.log.debug(f"Acquiring {len(need)} locks")
+        while True:
+            async with type(self).SEQ_SHARED_LOCK:
+                # Only claim locks if all locks are available
+                if not any(x.locked for x in need):
+                    for lock in need:
+                        await lock.acquire(self)
+                    break
+            # Wait for another sequence to unlock
+            await type(self).SEQ_SHARED_EVENT.wait_for(SeqEvent.UNLOCKED)
         # Yield the requested locks
-        self.log.info("Yielding to the sequence")
         yield
         # Release the locks
-        self.log.info(f"Releasing {len(lockables)} locks")
-        for lock in held:
+        self.log.debug(f"Releasing {len(lockables)} locks")
+        for lock in need:
             lock.release(self)
 
 
