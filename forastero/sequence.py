@@ -72,7 +72,7 @@ class SeqLock:
             self._locked_by = None
             self._lock.release()
             # Raise unlock event
-            SeqContext.SEQ_SHARED_EVENT.publish(SeqEvent.UNLOCKED, None)
+            SeqContext.SEQ_SHARED_EVENT.publish(SeqContextEvent.UNLOCKED, None)
 
 
 class SeqProxy(EventEmitter):
@@ -81,17 +81,17 @@ class SeqProxy(EventEmitter):
     is achieved by mocking functionality of a component including intercepting
     and filtering events.
 
-    :param sequence:  The sequence that owns this proxy
+    :param context:   The sequence context associated to this proxy
     :param component: The component to proxy
     :param lock:      The shared lock for the component
     """
 
     def __init__(self,
-                 ctx: "SeqContext",
+                 context: "SeqContext",
                  component: Component,
                  lock: SeqLock) -> None:
         super().__init__()
-        self._context = ctx
+        self._context = context
         self._component = component
         self._lock = lock
         # Subscribe to events from the component
@@ -135,11 +135,19 @@ class SeqProxy(EventEmitter):
         return self._component.idle()
 
 
-class SeqEvent(Enum):
+class SeqContextEvent(Enum):
     UNLOCKED = auto()
 
 
 class SeqContext:
+    """
+    A context specific to a given sequence invocation that provides logging,
+    random value generation, and lock management.
+
+    :param sequence: The sequence being invoked
+    :param log:      The root sequencing log (pre-fork)
+    :param random:   The root random instance (pre-fork)
+    """
 
     SEQ_CTX_ID: ClassVar[dict[str, itertools.count]] = defaultdict(itertools.count)
     SEQ_SHARED_LOCK: ClassVar[Lock] = Lock()
@@ -147,9 +155,14 @@ class SeqContext:
 
     def __init__(self, sequence: "BaseSequence", log: SimLog, random: Random) -> None:
         self._sequence = sequence
+        # Allocate an ID unique to the sequence's name
         self._ctx_id = next(type(self).SEQ_CTX_ID[self._sequence.name])
+        # Fork the log to ensure a distinct context
         self.log = log.getChild(self.id)
-        self.random = random
+        # Fork the root random to ensure sequence run-to-run consistency
+        self.random = Random(random.random())
+        # Lock re-entrancy flag
+        self._locks_active = False
 
     @property
     def id(self) -> str:
@@ -157,6 +170,17 @@ class SeqContext:
 
     @contextlib.asynccontextmanager
     async def lock(self, *lockables: SeqLock | SeqProxy):
+        """
+        Atomically acquire one or more named or component locks (i.e. locks will
+        only be claimed if all locks are available, otherwise it will wait until
+        such a condition can be met).
+
+        :param *lockables: References to named locks or sequence proxies (which
+                           will be resolved to the equivalent component locks)
+        """
+        # Mark that locking is active
+        assert not self._locks_active, "You must release all locks before re-acquisition"
+        self._locks_active = True
         # Figure out all the locks that need to be acquired
         need: list[SeqLock] = []
         for lock in lockables:
@@ -173,14 +197,16 @@ class SeqContext:
                     for lock in need:
                         await lock.acquire(self)
                     break
-            # Wait for another sequence to unlock
-            await type(self).SEQ_SHARED_EVENT.wait_for(SeqEvent.UNLOCKED)
+            # Wait any lock to be released before re-evaluating
+            await type(self).SEQ_SHARED_EVENT.wait_for(SeqContextEvent.UNLOCKED)
         # Yield the requested locks
         yield
         # Release the locks
         self.log.debug(f"Releasing {len(lockables)} locks")
         for lock in need:
             lock.release(self)
+        # Clear locking active flag
+        self._locks_active = False
 
 
 class BaseSequence:

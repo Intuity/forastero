@@ -233,7 +233,7 @@ class BaseBench:
 
     def schedule(self, sequence: BaseSequence, blocking: bool = True) -> None:
         cocotb.start_soon(sequence(self.fork_log("sequence"),
-                                   random.Random(self.random.random()),
+                                   self.random,
                                    blocking))
 
     def add_teardown(self, coro: Coroutine) -> None:
