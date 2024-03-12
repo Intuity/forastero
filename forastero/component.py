@@ -13,20 +13,17 @@
 # limitations under the License.
 
 import asyncio
-from collections import defaultdict
-from collections.abc import Callable
-from enum import Enum
 from random import Random
 from typing import Any, ClassVar
 
-import cocotb
 from cocotb.handle import ModifiableObject
-from cocotb.triggers import Event, RisingEdge
+from cocotb.triggers import RisingEdge
 
+from .event import EventEmitter
 from .io import BaseIO
 
 
-class Component:
+class Component(EventEmitter):
     """
     Base component type for working with BaseIO interfaces, can be extended to
     form drivers, monitors, and other signalling protocol aware components.
@@ -58,6 +55,9 @@ class Component:
 
         assert isinstance(tb, BaseBench), "'tb' should inherit from BaseBench"
         assert isinstance(io, BaseIO), "'io' should inherit from BaseIO"
+        # Setup emitter behaviours
+        super().__init__()
+        # Setup component variables
         self.tb = tb
         self.io = io
         self.clk = clk
@@ -67,9 +67,6 @@ class Component:
         self.blocking = blocking
         self.log = self.tb.fork_log(type(self).__name__.lower(), self.name)
         self._lock = asyncio.Lock()
-        self._handlers = defaultdict(list)
-        self._ready = Event()
-        self._waiting = defaultdict(list)
         Component.COMPONENTS.append(self)
 
     async def ready(self) -> None:
@@ -82,53 +79,6 @@ class Component:
         :param random:  The random instance to seed from
         """
         self.random = Random(random.random())
-
-    def subscribe(self, event: Enum, callback: Callable) -> None:
-        """
-        Subscribe to an event being published by this component.
-
-        :param event:    Enumerated event
-        :param callback: Method to call when the event occurs, this must accept
-                         arguments of component, event type, and an associated
-                         object
-        """
-        if not isinstance(event, Enum):
-            raise TypeError(f"Event should inherit from Enum, unlike {event}")
-        self._handlers[event].append(callback)
-
-    def unsubscribe_all(self, event: Enum) -> None:
-        """
-        De-register all subscribers for a given event from this component.
-
-        :param event: Enumerated event
-        """
-        if not isinstance(event, Enum):
-            raise TypeError(f"Event should inherit from Enum, unlike {event}")
-        self._handlers[event].clear()
-
-    def publish(self, event: Enum, obj: Any) -> None:
-        """
-        Publish an event and deliver it to any registered subscribers.
-
-        :param event: Enumerated event
-        :param obj:   Object associated to the event
-        """
-        # Call direct handlers
-        for handler in self._handlers[event]:
-            call = handler(self, event, obj)
-            if asyncio.iscoroutine(call):
-                cocotb.start_soon(call)
-        # Trigger pending events
-        events = self._waiting[event][:]
-        self._waiting[event].clear()
-        for event in events:
-            event.set(data=obj)
-
-    async def wait_for(self, event: Enum) -> Any:
-        evt = Event()
-        self._waiting[event].append(evt)
-        await evt.wait()
-        return evt.data
 
     async def lock(self) -> None:
         """Lock the component's internal lock"""

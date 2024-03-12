@@ -19,8 +19,9 @@ logic [31:0] arb_data_d, arb_data_q;
 logic        arb_valid_d, arb_valid_q;
 logic        arb_choice_d, arb_choice_q;
 
-assign arb_choice_d = (arb_valid_q && !i_x_ready) ? arb_choice_q
-                                                  : (arb_choice_q ^ i_b_valid);
+assign arb_choice_d = (arb_valid_q && !i_x_ready) ? arb_choice_q :
+                      (arb_choice_q             ) ? !i_a_valid
+                                                  : i_b_valid;
 
 assign arb_valid_d = (arb_valid_q && !i_x_ready) ||
                      (arb_choice_d == 'd0 && i_a_valid) ||

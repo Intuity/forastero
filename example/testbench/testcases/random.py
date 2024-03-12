@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from cocotb.log import SimLog
 from cocotb.triggers import ClockCycles
 
 from forastero import DriverEvent
@@ -23,14 +24,14 @@ from ..testbench import Testbench
 @Testbench.testcase()
 @Testbench.parameter("packets")
 @Testbench.parameter("delay")
-async def random(tb: Testbench, packets: int = 1000, delay: int = 5000):
+async def random(tb: Testbench, log: SimLog, packets: int = 1000, delay: int = 5000):
     # Disable backpressure on input
     tb.x_resp.enqueue(StreamBackpressure(ready=True))
+
     # Queue traffic onto interfaces A & B and interleave on the exit port
     for _ in range(packets):
-        tb.a_init.enqueue(a := StreamTransaction(data=tb.random.getrandbits(32)))
-        tb.b_init.enqueue(b := StreamTransaction(data=tb.random.getrandbits(32)))
-        tb.scoreboard.channels["x_mon"].push_reference(a, b)
+        tb.a_init.enqueue(StreamTransaction(data=tb.random.getrandbits(32)))
+        tb.b_init.enqueue(StreamTransaction(data=tb.random.getrandbits(32)))
 
     # Queue up random backpressure
     def _rand_bp(*_):

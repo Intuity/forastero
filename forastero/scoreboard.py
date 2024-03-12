@@ -43,7 +43,7 @@ class Queue:
 
     @property
     def on_push_event(self) -> Event:
-        """ Expose the event that will be fired on the next push """
+        """Expose the event that will be fired on the next push"""
         if self._on_push is None:
             self._on_push = Event()
         return self._on_push
@@ -71,7 +71,7 @@ class Queue:
         return self._entries.pop(0)
 
     def wait(self) -> None:
-        """ Register an 'on-push' event and wait for it to be set by a push """
+        """Register an 'on-push' event and wait for it to be set by a push"""
         return self.on_push_event.wait()
 
     def peek(self) -> Any:
@@ -110,27 +110,27 @@ class Channel:
 
     @property
     def monitor_depth(self) -> int:
-        """ Number of captured packets queued up by the DUT monitor """
+        """Number of captured packets queued up by the DUT monitor"""
         return self._q_mon.level
 
     @property
     def reference_depth(self) -> int:
-        """ Number of expected packets queued up by the reference model """
+        """Number of expected packets queued up by the reference model"""
         return self._q_ref.level
 
     @property
     def matched(self) -> int:
-        """ Number of matched packets between monitor and reference model """
+        """Number of matched packets between monitor and reference model"""
         return self._matched
 
     @property
     def mismatched(self) -> int:
-        """ Number of mismatched packets between monitor and reference model """
+        """Number of mismatched packets between monitor and reference model"""
         return self._mismatched
 
     @property
     def total(self) -> int:
-        """ Total number of packets matched/mismatched """
+        """Total number of packets matched/mismatched"""
         return self._matched + self._mismatched
 
     def push_monitor(self, *transactions: BaseTransaction) -> None:
@@ -236,13 +236,11 @@ class FunnelChannel(Channel):
     monitor packets arrive any queue head is valid.
     """
 
-    def __init__(self,
-                 name: str,
-                 monitor: BaseMonitor,
-                 log: SimLog,
-                 ref_queues: list[str]) -> None:
+    def __init__(
+        self, name: str, monitor: BaseMonitor, log: SimLog, ref_queues: list[str]
+    ) -> None:
         super().__init__(name, monitor, log)
-        self._q_ref = { x: Queue() for x in ref_queues }
+        self._q_ref = {x: Queue() for x in ref_queues}
 
     @property
     def reference_depth(self) -> int:
@@ -284,6 +282,35 @@ class FunnelChannel(Channel):
             # Wait for a reference object to be pushed to any queue
             await First(*(x.on_push_event.wait() for x in self._q_ref.values()))
 
+    def report(self) -> None:
+        """
+        Report the status of this channel detailing number of entries in the
+        monitor and reference queues, and the queued transactions at the head
+        of those queues
+        """
+        # Report matches/mismatches
+        self.log.info(
+            f"Channel {self.name} paired {self.total} transactions of which "
+            f"{self.mismatched} mismatches were detected"
+        )
+        # Report outstanding transactions
+        mon_depth = self.monitor_depth
+        ref_depth = self.reference_depth
+        if mon_depth > 0 or ref_depth > 0:
+            self.log.error(
+                f"Channel {self.name} has {mon_depth} entries captured from "
+                f"monitor and {ref_depth} entries queued from reference model"
+            )
+        if mon_depth > 0:
+            self.log.info(f"Packet at head of {self.name}'s monitor queue:")
+            self.log.info(self._q_mon.peek().tabulate())
+        for key, queue in self._q_ref.items():
+            if queue.level > 0:
+                self.log.info(
+                    f"Packet at head of {self.name}'s reference queue '{key}':"
+                )
+                self.log.info(queue.peek().tabulate())
+
 
 class MiscompareError(Exception):
     """
@@ -294,7 +321,9 @@ class MiscompareError(Exception):
     :param reference: Expected transaction queued by the model
     """
 
-    def __init__(self, channel: Channel, monitor: BaseTransaction, reference: BaseTransaction) -> None:
+    def __init__(
+        self, channel: Channel, monitor: BaseTransaction, reference: BaseTransaction
+    ) -> None:
         super().__init__()
         self.channel = channel
         self.monitor = monitor
@@ -310,17 +339,16 @@ class Scoreboard:
     :param fail_fast: Stop the test as soon as a mismatch is reported (default: False)
     """
 
-    def __init__(self, tb: "BaseBench", fail_fast: bool = False):
+    def __init__(self, tb: "BaseBench", fail_fast: bool = False):  # noqa: F821
         self.fail_fast = fail_fast
         self._mismatches = []
         self.tb = tb
         self.log = self.tb.fork_log("scoreboard")
         self.channels: dict[str, Channel] = {}
 
-    def attach(self,
-               monitor: BaseMonitor,
-               verbose=False,
-               queues: list[str] | None=None) -> None:
+    def attach(
+        self, monitor: BaseMonitor, verbose=False, queues: list[str] | None = None
+    ) -> None:
         """
         Attach a monitor to the scoreboard, creating and scheduling a new
         channel in the process.
@@ -332,8 +360,7 @@ class Scoreboard:
         assert monitor.name not in self.channels, f"Monitor known for '{monitor.name}'"
         if isinstance(queues, list) and len(queues) > 0:
             channel = FunnelChannel(
-                monitor.name, monitor, self.tb.fork_log("channel", monitor.name),
-                queues
+                monitor.name, monitor, self.tb.fork_log("channel", monitor.name), queues
             )
         else:
             channel = Channel(

@@ -12,10 +12,6 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-pre-commit = "^3.3.3"
-ruff = "^0.0.282"
-black = "^23.7.0"
-pytest = "^7.4.0"
 cocotb = "^1.8.0"
 tabulate = "^0.9.0"
 yappi = "^1.6.0"
@@ -24,13 +20,27 @@ yappi = "^1.6.0"
 mkdocs = "^1.5.2"
 mkdocs-material = "^9.3.1"
 mkdocstrings = {extras = ["python"], version = "^0.21.2"}
+ruff = "^0.3.2"
+pre-commit = "^3.6.2"
+pytest = "^8.1.1"
 
 [tool.ruff]
-# See https://beta.ruff.rs/docs/rules
+line-length = 88
+indent-width = 4
+
+# Assume Python 3.11
+target-version = "py311"
+
+[tool.ruff.lint]
 select = ["E", "F", "B", "UP", "N", "W", "I", "A", "C4", "PTH", "RUF"]
 ignore = []
 fixable = ["ALL"]
 unfixable = []
-target-version = "py311"
-# Character length of 88 is compatible with Black
-line-length = 88
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = true
+docstring-code-line-length = "dynamic"
