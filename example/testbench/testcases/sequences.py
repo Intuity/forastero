@@ -38,7 +38,7 @@ async def random_traffic(ctx: SeqContext, stream: StreamInitiator, length: int =
             stream.enqueue(StreamTransaction(data=ctx.random.getrandbits(32)))
 
 
-@forastero.sequence()
+@forastero.sequence(auto_lock=True)
 @forastero.requires("stream_a", StreamInitiator)
 @forastero.requires("stream_b", StreamInitiator)
 async def burst_on_a_only(
@@ -48,13 +48,12 @@ async def burst_on_a_only(
     length: int = 64,
 ):
     """Generates a burst only on one channel"""
-    async with ctx.lock(stream_a, stream_b):
-        await stream_a.idle()
-        await stream_b.idle()
-        ctx.log.info(f"Driving burst of {length} packets on stream A")
-        for _ in range(length):
-            stream_a.enqueue(StreamTransaction(data=ctx.random.getrandbits(32)))
-        await stream_a.idle()
+    await stream_a.idle()
+    await stream_b.idle()
+    ctx.log.info(f"Driving burst of {length} packets on stream A")
+    for _ in range(length):
+        stream_a.enqueue(StreamTransaction(data=ctx.random.getrandbits(32)))
+    await stream_a.idle()
 
 
 @forastero.sequence()

@@ -271,23 +271,19 @@ class BaseSequence:
 
     REGISTRY: ClassVar[dict[Callable, "BaseSequence"]] = {}
     LOCKS: ClassVar[dict[str, SeqLock]] = defaultdict(SeqLock)
-    ACTIVE: ClassVar[int] = 0
 
-    def __init__(self, fn: Callable) -> None:
+    def __init__(self, fn: Callable, auto_lock: bool = False) -> None:
         # Ensure that this wrapper is unique for the sequencing function
         assert id(fn) not in type(self).REGISTRY, "Sequencing function registered twice"
         type(self).REGISTRY[id(fn)] = self
         # Capture variables
+        self.auto_lock = auto_lock
         self._fn = fn
         self._requires: dict[str, Any] = {}
         self._locks: list[str] = []
 
     def __repr__(self) -> str:
         return f'<BaseSequence name="{self.name}">'
-
-    @classmethod
-    def get_active(cls) -> int:
-        return cls.ACTIVE
 
     @property
     def name(self) -> str:
@@ -359,11 +355,7 @@ class BaseSequence:
         """
 
         # Create a wrapper to allow log and random to be inserted by the bench
-        async def _inner(log: SimLog, random: Random, blocking: bool):
-            # Increment active as the sequence starts
-            # TODO: Improve how this shutdown hold-off mechanism is working
-            if blocking:
-                type(self).ACTIVE += 1
+        async def _inner(log: SimLog, random: Random):
             # Create a context
             ctx = SeqContext(self, log, random)
             # Check that provided components match expectation
@@ -388,52 +380,51 @@ class BaseSequence:
             locks = {}
             for lock in self._locks:
                 locks[lock] = SeqLock.get_named_lock(lock)
-            # Call the sequence
-            await self._fn(ctx, **comps, **locks, **kwds)
-            # Decrement active
-            if blocking:
-                type(self).ACTIVE -= 1
+            # If auto-locking requested, wrap with a lock context
+            if self.auto_lock:
+                async with ctx.lock(*comps.values(), *locks.values()):
+                    await self._fn(ctx, **comps, **locks, **kwds)
+            # Otherwise just launch the sequence directly
+            else:
+                await self._fn(ctx, **comps, **locks, **kwds)
 
         # Return wrapped coroutine
         return _inner
 
 
-def sequence() -> BaseSequence:
+def sequence(auto_lock: bool = False) -> BaseSequence:
     """
     Decorator used to wrap a sequencing function, for now there are no arguments
     and the argument pattern is just a placeholder for future extension.
+
+    :param auto_lock: When enabled locks will be claimed automatically on all
+                      requirements as the sequence starts, otherwise the sequence
+                      will be responsible for claiming and releasing locks
+    :returns:         Wrapped sequence
     """
 
     def _inner(fn: Callable) -> Callable:
-        return BaseSequence.register(fn)
+        seq = BaseSequence.register(fn)
+        seq.auto_lock = auto_lock
+        return seq
 
     return _inner
 
 
-def requires(req_name: str, req_type: Any) -> BaseSequence:
+def requires(req_name: str, req_type: Any | None = None) -> BaseSequence:
     """
-    Decorator used to add a requirement to a sequencing function.
+    Decorator used to add a requirement on a driver/monitor or an arbitrarily
+    named lock to a sequencing function.
 
-    :param req_name: Name of the driver/monitor required
+    :param req_name: Name of the lock, driver, or monitor required
     :param req_type: Type of the driver/monitor required
-    :returns: Wrapped sequence
+    :returns:        Wrapped sequence
     """
 
     def _inner(fn: Callable) -> Callable:
-        return BaseSequence.register(fn).add_requirement(req_name, req_type)
-
-    return _inner
-
-
-def lock(lock_name: str) -> BaseSequence:
-    """
-    Decorator used to define an arbitrary lock for a sequencing function.
-
-    :param lock_name: Name of the lock
-    :returns: Wrapped sequence
-    """
-
-    def _inner(fn: Callable) -> Callable:
-        return BaseSequence.register(fn).add_lock(lock_name)
+        if req_type is None:
+            return BaseSequence.register(fn).add_lock(req_name)
+        else:
+            return BaseSequence.register(fn).add_requirement(req_name, req_type)
 
     return _inner

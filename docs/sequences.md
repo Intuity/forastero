@@ -132,9 +132,9 @@ async def weird_traffic(ctx: SeqContext,
     indentation level).
 
 Sequences can also declare arbitrarily named locks that they can use to
-co-ordinate with other sequences using the `lock` decorator, for example this
-may be used to represent some state of the design that is not directly exposed
-via the I/Os of the DUT.
+co-ordinate with other sequences using the `requires` decorator but without
+providing an expected type, for example this may be used to represent some state
+of the design that is not directly exposed via the I/Os of the DUT.
 
 ```python title="tb/sequences/sequence.py"
 import forastero
@@ -146,7 +146,7 @@ from ..irq import IrqInitiator, IrqTransaction
 @forastero.sequence()
 @forastero.requires("cfg", ApbInitiator)
 @forastero.requires("irq", IrqInitiator)
-@forastero.lock("irq_config")
+@forastero.requires("irq_config")
 async def trigger_interrupt(ctx: SeqContext,
                             cfg: SeqProxy[ApbInitiator],
                             irq: SeqProxy[IrqInitiator],
@@ -180,7 +180,7 @@ from ..irq import IrqInitiator, IrqTransaction
 @forastero.sequence()
 @forastero.requires("cfg", ApbInitiator)
 @forastero.requires("irq", IrqInitiator)
-@forastero.lock("irq_config")
+@forastero.requires("irq_config")
 async def trigger_interrupt(ctx: SeqContext,
                             cfg: SeqProxy[ApbInitiator],
                             irq: SeqProxy[IrqInitiator],
@@ -189,6 +189,33 @@ async def trigger_interrupt(ctx: SeqContext,
         async with ctx.lock(irq): # ILLEGAL!
             async with ctx.lock(irq_config): # ILLEGAL!
                 ...
+```
+
+## Auto-Locking Sequences
+
+Some simple sequences may only ever need to claim locks once and then will release
+them all once the sequence completes. In such a scenario a sequence can be marked
+as 'auto-locking' by providing `auto_lock=True` to the `sequence` decorator:
+
+```python title="tb/sequences/sequence.py"
+import forastero
+from forastero.sequence import SeqContext, SeqLock, SeqProxy
+
+from ..apb import ApbInitiator, ApbTransaction
+from ..irq import IrqInitiator, IrqTransaction
+
+@forastero.sequence(auto_lock=True)
+@forastero.requires("cfg", ApbInitiator)
+@forastero.requires("irq", IrqInitiator)
+@forastero.requires("irq_config")
+async def my_auto_lock_seq(ctx: SeqContext,
+                           cfg: SeqProxy[ApbInitiator],
+                           irq: SeqProxy[IrqInitiator],
+                           irq_config: SeqLock):
+    # NOTE: The 'async with' is no longer needed!
+    cfg.enqueue(ApbTransaction(address=0x0, ...))
+    cfg.enqueue(ApbTransaction(address=0x4, ...))
+    irq.enqueue(IrqTransaction(...))
 ```
 
 ## Scheduling Sequences

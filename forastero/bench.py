@@ -232,7 +232,16 @@ class BaseBench:
             raise TypeError(f"Unsupported object: {comp_or_coro}")
 
     def schedule(self, sequence: BaseSequence, blocking: bool = True) -> None:
-        cocotb.start_soon(sequence(self.fork_log("sequence"), self.random, blocking))
+        """
+        Schedule a sequence to execute as part of a testcase.
+
+        :param sequence: The sequence to schedule
+        :param blocking: Whether the sequence must complete before the test is
+                         allowed to finish
+        """
+        task = cocotb.start_soon(sequence(self.fork_log("sequence"), self.random))
+        if blocking:
+            self.sequences.append(task)
 
     def add_teardown(self, coro: Coroutine) -> None:
         """
@@ -263,9 +272,11 @@ class BaseBench:
             # All drivers and monitors should be idle
             self._orch_log.info(f"Shutdown loop ({loop_idx+1}/{loops})")
             # Wait for sequences to complete
-            self._orch_log.debug("Waiting for all sequences to complete")
-            while BaseSequence.get_active() > 0:
-                await ClockCycles(self.clk, 10)
+            self._orch_log.debug(
+                f"Waiting for {len(self.sequences)} sequences to complete"
+            )
+            for sequence in self.sequences:
+                await sequence
             # Wait for minimum delay
             self._orch_log.debug("Waiting for minimum delay")
             await ClockCycles(self.clk, delay)
