@@ -211,7 +211,7 @@ class SeqArbiter:
         :param context: The sequence context queueing
         :param locks:   The list of locks required
         """
-        self._log.info(f"Sequence context {context._sequence.name} began queueing")
+        self._log.debug(f"Sequence context {context._sequence.name} began queueing")
         # Queue up the context, locks it requests, and the stall event
         self._queue.append((context, locks, evt := Event()))
         # Mark a new entry as having been pushed
@@ -219,7 +219,7 @@ class SeqArbiter:
         # Wait for the event
         await evt.wait()
         # Log that the sequence has been released
-        self._log.info(
+        self._log.debug(
             f"Sequence context {context._sequence.name} has finished queueing"
         )
 
@@ -240,7 +240,7 @@ class SeqArbiter:
                 order = list(range(len(self._queue)))
                 self._random.shuffle(order)
                 # Schedule as many sequences as possible
-                self._log.info(
+                self._log.debug(
                     f"Attempting to schedule {len(self._queue)} sequences "
                     f"with {len(available)} available locks"
                 )
@@ -262,7 +262,7 @@ class SeqArbiter:
                     # If no more locks are available, break out early
                     if not available:
                         break
-                self._log.info(f"Scheduled {len(scheduled)} sequences")
+                self._log.debug(f"Scheduled {len(scheduled)} sequences")
                 # Prune the scheduled sequences
                 self._queue = [
                     x for i, x in enumerate(self._queue) if i not in scheduled
