@@ -39,5 +39,6 @@ nav:
     - Components: "classes/component.md"
     - BaseDriver: "classes/driver.md"
     - BaseMonitor: "classes/monitor.md"
+    - Sequences: "classes/sequences.md"
     - Scoreboards: "classes/scoreboard.md"
     - Testbenches: "classes/bench.md"

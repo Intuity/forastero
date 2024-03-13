@@ -15,13 +15,14 @@
 import contextlib
 import itertools
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from enum import Enum, auto
 from random import Random
 from typing import Any, ClassVar, Generic, Self, TypeVar
 
+import cocotb
 from cocotb.log import SimLog
-from cocotb.triggers import Lock
+from cocotb.triggers import Event, Lock
 
 from .component import Component
 from .driver import BaseDriver
@@ -73,6 +74,22 @@ class SeqLock:
         else:
             cls._NAMED_LOCKS[name] = (lock := SeqLock(name))
             return lock
+
+    @classmethod
+    def get_all_component_locks(cls) -> Iterable[tuple[Component, Self]]:
+        """Return a list of all known component locks"""
+        yield from cls._COMPONENT_LOCKS.items()
+
+    @classmethod
+    def get_all_named_locks(cls) -> Iterable[tuple[str, Self]]:
+        """Return a list of all known named locks"""
+        yield from cls._NAMED_LOCKS.items()
+
+    @classmethod
+    def get_all_locks(cls) -> Iterable[Self]:
+        """Return a list of all known locks"""
+        yield from cls._COMPONENT_LOCKS.values()
+        yield from cls._NAMED_LOCKS.values()
 
     @property
     def locked(self) -> bool:
@@ -173,6 +190,90 @@ class SeqContextEvent(Enum):
     UNLOCKED = auto()
 
 
+class SeqArbiter:
+    """
+    Arbitrates being queuing sequences to determine which sequences can start
+    based on the locks they are requesting.
+    """
+
+    def __init__(self, log: SimLog, random: Random):
+        self._log = log
+        self._random = Random(random.random())
+        self._queue = []
+        self._evt_queue = Event()
+        cocotb.start_soon(self._manage())
+
+    async def queue_for(self, context: "SeqContext", locks: list[SeqLock]) -> None:
+        """
+        Queue against the arbiter for a collection of locks. The arbiter will
+        schedule the sequence only once all locks can be atomically acquired.
+
+        :param context: The sequence context queueing
+        :param locks:   The list of locks required
+        """
+        self._log.info(f"Sequence context {context._sequence.name} began queueing")
+        # Queue up the context, locks it requests, and the stall event
+        self._queue.append((context, locks, evt := Event()))
+        # Mark a new entry as having been pushed
+        self._evt_queue.set()
+        # Wait for the event
+        await evt.wait()
+        # Log that the sequence has been released
+        self._log.info(
+            f"Sequence context {context._sequence.name} has finished queueing"
+        )
+
+    async def _manage(self) -> None:
+        """Executes in a loop to schedule sequences"""
+        while True:
+            # Wait until something is queued up
+            await self._evt_queue.wait()
+            # While stuff is queued, attempt to schedule it
+            while self._queue:
+                # Keep track of which locks are available
+                available = {x for x in SeqLock.get_all_locks() if not x.locked}
+                # If no locks are available, wait for the next release
+                if not available:
+                    await SeqContext.SEQ_SHARED_EVENT.wait_for(SeqContextEvent.UNLOCKED)
+                    continue
+                # Randomise the order to process the queue
+                order = list(range(len(self._queue)))
+                self._random.shuffle(order)
+                # Schedule as many sequences as possible
+                self._log.info(
+                    f"Attempting to schedule {len(self._queue)} sequences "
+                    f"with {len(available)} available locks"
+                )
+                scheduled = []
+                for idx in order:
+                    # Pickup the entry
+                    ctx, locks, evt = self._queue[idx]
+                    # If any locks are unavailable, keep searching
+                    if set(locks).difference(available):
+                        continue
+                    # Claim the locks on behalf of the sequence
+                    for lock in locks:
+                        await lock.acquire(ctx)
+                        available.remove(lock)
+                    # Trigger the sequence release event
+                    evt.set()
+                    # Remember which sequences have been scheduled
+                    scheduled.append(idx)
+                    # If no more locks are available, break out early
+                    if not available:
+                        break
+                self._log.info(f"Scheduled {len(scheduled)} sequences")
+                # Prune the scheduled sequences
+                self._queue = [
+                    x for i, x in enumerate(self._queue) if i not in scheduled
+                ]
+                # Wait for the next lock release
+                await SeqContext.SEQ_SHARED_EVENT.wait_for(SeqContextEvent.UNLOCKED)
+            # Clear the trigger event so that the next queue_for call retriggers
+            # the scheduling routine
+            self._evt_queue.clear()
+
+
 class SeqContext:
     """
     A context specific to a given sequence invocation that provides logging,
@@ -187,8 +288,11 @@ class SeqContext:
     SEQ_SHARED_LOCK: ClassVar[Lock] = Lock()
     SEQ_SHARED_EVENT: ClassVar[EventEmitter] = EventEmitter()
 
-    def __init__(self, sequence: "BaseSequence", log: SimLog, random: Random) -> None:
+    def __init__(
+        self, sequence: "BaseSequence", log: SimLog, random: Random, arbiter: SeqArbiter
+    ) -> None:
         self._sequence = sequence
+        self._arbiter = arbiter
         # Allocate an ID unique to the sequence's name
         self._ctx_id = next(type(self).SEQ_CTX_ID[self._sequence.name])
         # Fork the log to ensure a distinct context
@@ -224,18 +328,9 @@ class SeqContext:
                 need.append(SeqLock.get_component_lock(lock._component))
             else:
                 need.append(lock)
-        # Atomically acquire all requested locks
-        self.log.debug(f"Acquiring {len(need)} locks")
-        while True:
-            async with type(self).SEQ_SHARED_LOCK:
-                # Only claim locks if all locks are available
-                if not any(x.locked for x in need):
-                    for lock in need:
-                        await lock.acquire(self)
-                    break
-            # Wait any lock to be released before re-evaluating
-            await type(self).SEQ_SHARED_EVENT.wait_for(SeqContextEvent.UNLOCKED)
-        # Yield the requested locks
+        # Queue against the arbiter for a slot to execute
+        await self._arbiter.queue_for(self, need)
+        # Yield back to the
         yield
         # Release any remaining locks
         self.log.debug(f"Releasing {len(lockables)} locks")
@@ -355,9 +450,9 @@ class BaseSequence:
         """
 
         # Create a wrapper to allow log and random to be inserted by the bench
-        async def _inner(log: SimLog, random: Random):
+        async def _inner(log: SimLog, random: Random, arbiter: SeqArbiter):
             # Create a context
-            ctx = SeqContext(self, log, random)
+            ctx = SeqContext(self, log, random, arbiter)
             # Check that provided components match expectation
             comps = {}
             for name, ctype in self._requires.items():

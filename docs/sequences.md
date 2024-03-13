@@ -298,3 +298,14 @@ Each sequence scheduled is provided with a unique instance of
 
 A sequence should always use the context for logging and random number generation
 rather than accessing the root testbench directly.
+
+## Sequence Arbitration
+
+When more than one sequence is scheduled, the arbiter is responsible for deciding
+which sequence is able to claim locks first - this is especially important when
+sequences are in contention over shared locks.
+
+The current arbitration implementation is based on random ordering of the queued
+sequences (i.e. everything currently waiting on a `async with ctx.lock(...)` call).
+Future improvements to Forastero will introduce more complex arbitration functions
+that allow control over the balancing of different sequences.

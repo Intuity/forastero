@@ -36,7 +36,7 @@ from .driver import BaseDriver
 from .io import IORole
 from .monitor import BaseMonitor
 from .scoreboard import Scoreboard
-from .sequence import BaseSequence
+from .sequence import BaseSequence, SeqArbiter
 
 
 class BaseBench:
@@ -104,14 +104,16 @@ class BaseBench:
         fail_fast = os.environ.get("FAIL_FAST", "no").lower() == "yes"
         self.scoreboard = Scoreboard(tb=self, fail_fast=fail_fast)
         # Track components
-        self.components = {}
-        self.processes = {}
-        self.teardown = []
-        self.sequences = []
+        self._components = {}
+        self._processes = {}
+        self._teardown = []
         # Random seeding
         self.seed = int(self.get_parameter("seed", 0))
         self.info(f"Bench initialised with random seed {self.seed}")
         self.random = random.Random(self.seed)
+        # Sequence handling
+        self._arbiter = SeqArbiter(self.fork_log("arbiter"), self.random)
+        self._sequences = []
         # Events
         self.evt_ready = Event()
 
@@ -154,7 +156,7 @@ class BaseBench:
     async def initialise(self) -> None:
         """Initialise the DUT's I/O"""
         self.rst.value = 1
-        for comp in self.components.values():
+        for comp in self._components.values():
             comp.io.initialise(IORole.opposite(comp.io.role))
 
     async def reset(self, init=True, wait_during=20, wait_after=1) -> None:
@@ -215,12 +217,12 @@ class BaseBench:
         """
         assert isinstance(name, str), f"Name must be a string '{name}'"
         if asyncio.iscoroutine(comp_or_coro):
-            assert name not in self.processes, f"Process known for '{name}'"
+            assert name not in self._processes, f"Process known for '{name}'"
             task = cocotb.start_soon(comp_or_coro)
-            self.processes[name] = task
+            self._processes[name] = task
         elif isinstance(comp_or_coro, Component):
-            assert name not in self.components, f"Component known for '{name}'"
-            self.components[name] = comp_or_coro
+            assert name not in self._components, f"Component known for '{name}'"
+            self._components[name] = comp_or_coro
             comp_or_coro.name = name
             setattr(self, name, comp_or_coro)
             comp_or_coro.seed(self.random)
@@ -239,9 +241,11 @@ class BaseBench:
         :param blocking: Whether the sequence must complete before the test is
                          allowed to finish
         """
-        task = cocotb.start_soon(sequence(self.fork_log("sequence"), self.random))
+        task = cocotb.start_soon(
+            sequence(self.fork_log("sequence"), self.random, self._arbiter)
+        )
         if blocking:
-            self.sequences.append(task)
+            self._sequences.append(task)
 
     def add_teardown(self, coro: Coroutine) -> None:
         """
@@ -251,7 +255,7 @@ class BaseBench:
         :param coro: Coroutine to register
         """
         assert asyncio.iscoroutine(coro), "Only coroutines may be added to teardown"
-        self.teardown.append(coro)
+        self._teardown.append(coro)
 
     async def close_down(self, loops: int = 2, delay: int = 100) -> None:
         """
@@ -263,7 +267,7 @@ class BaseBench:
         """
         # Filter drivers and monitors into separate lists
         drivers, monitors = [], []
-        for comp in self.components.values():
+        for comp in self._components.values():
             if not comp.blocking:
                 continue
             [monitors, drivers][isinstance(comp, BaseDriver)].append(comp)
@@ -273,9 +277,9 @@ class BaseBench:
             self._orch_log.info(f"Shutdown loop ({loop_idx+1}/{loops})")
             # Wait for sequences to complete
             self._orch_log.debug(
-                f"Waiting for {len(self.sequences)} sequences to complete"
+                f"Waiting for {len(self._sequences)} sequences to complete"
             )
-            for sequence in self.sequences:
+            for sequence in self._sequences:
                 await sequence
             # Wait for minimum delay
             self._orch_log.debug("Waiting for minimum delay")
@@ -289,14 +293,14 @@ class BaseBench:
                 self._orch_log.debug(f"Waiting for monitor '{monitor.name}' to go idle")
                 await monitor.idle()
             # Wait for processes
-            procs, self.processes = self.processes, {}
+            procs, self._processes = self._processes, {}
             for name, proc in procs.items():
                 self._orch_log.debug(f"Waiting for process '{name}' to complete")
                 await proc
             # Drain the scoreboard
             await self.scoreboard.drain()
         # Run teardown steps
-        for teardown in self.teardown:
+        for teardown in self._teardown:
             await teardown
 
     @classmethod
@@ -344,7 +348,7 @@ class BaseBench:
                     # Check all components have been registered
                     missing = 0
                     for comp in Component.COMPONENTS:
-                        if comp not in tb.components.values():
+                        if comp not in tb._components.values():
                             tb._orch_log.error(
                                 f"{type(comp).__name__} '{comp.name}' has "
                                 f"not been registered with the testbench"
@@ -377,7 +381,7 @@ class BaseBench:
                     tb.evt_ready.set()
 
                     # Wait for all components to be ready
-                    for comp in tb.components.values():
+                    for comp in tb._components.values():
                         await comp.ready()
 
                     # Are there any parameters for this test?
@@ -407,7 +411,7 @@ class BaseBench:
                                 f"Simulation timed out after {timeout} ns"
                             )
                             # List any busy drivers
-                            for name, driver in tb.components.items():
+                            for name, driver in tb._components.items():
                                 if isinstance(driver, BaseDriver) and driver.queued > 0:
                                     tb._orch_log.info(
                                         f"Driver {name} has {driver.queued} "
