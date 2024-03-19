@@ -44,6 +44,7 @@ class SignalWrapper:
 
     def __init__(self, hier: HierarchyObject | NonHierarchyObject) -> None:
         self._hier = hier
+
         # Recursively discover all components (in case of a nested struct)
         def _expand(level):
             if isinstance(level, HierarchyObject):
@@ -51,6 +52,7 @@ class SignalWrapper:
                     yield from _expand(comp)
             else:
                 yield level
+
         all_components = list(_expand(self._hier))
         # Figure out how the bit fields pack into the bit vector, precalculating
         # the MSB, LSB, and mask to save compute later
@@ -58,7 +60,7 @@ class SignalWrapper:
         self._width = 0
         for comp in all_components[::-1]:
             if comp._range is None:
-                c_msb, c_lsb = len(comp)-1, 0
+                c_msb, c_lsb = len(comp) - 1, 0
             else:
                 c_msb, c_lsb = comp._range
             rel_msb, rel_lsb = self._width + c_msb, self._width + c_lsb
@@ -80,7 +82,7 @@ class SignalWrapper:
 
     @property
     def _range(self) -> tuple[int, int]:
-        return 0, self._width-1
+        return 0, self._width - 1
 
     def __len__(self) -> int:
         return self._width
