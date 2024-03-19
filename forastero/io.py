@@ -15,7 +15,7 @@
 from enum import IntEnum
 from typing import Any
 
-from cocotb.handle import HierarchyObject
+from cocotb.handle import HierarchyObject, NonHierarchyObject
 from cocotb.log import SimLog
 
 
@@ -30,6 +30,60 @@ class IORole(IntEnum):
         return {IORole.INITIATOR: IORole.RESPONDER, IORole.RESPONDER: IORole.INITIATOR}[
             value
         ]
+
+
+class SignalWrapper:
+    """
+    Some simulators supported by cocotb give visibility into the fields of a
+    struct (e.g. Cadence Xcelium), while others only expose it as a packed
+    bitvector. Forastero is built to assume the signal is a packed bitvector,
+    and this wrapper class normalises the behaviour.
+
+    :param hier: The signal hierarchy object
+    """
+
+    def __init__(self, hier: HierarchyObject | NonHierarchyObject) -> None:
+        self._hier = hier
+        # Recursively discover all components (in case of a nested struct)
+        def _expand(level):
+            if isinstance(level, HierarchyObject):
+                for comp in level:
+                    yield from _expand(comp)
+            else:
+                yield level
+        all_components = list(_expand(self._hier))
+        # Figure out how the bit fields pack into the bit vector, precalculating
+        # the MSB, LSB, and mask to save compute later
+        self._packing = []
+        self._width = 0
+        for comp in all_components[::-1]:
+            if comp._range is None:
+                c_msb, c_lsb = len(comp)-1, 0
+            else:
+                c_msb, c_lsb = comp._range
+            rel_msb, rel_lsb = self._width + c_msb, self._width + c_lsb
+            width = len(comp)
+            self._packing.append(((rel_lsb, rel_msb, (1 << width) - 1), comp))
+            self._width += width
+
+    @property
+    def value(self) -> int:
+        value = 0
+        for (lsb, _, _), comp in self._packing:
+            value |= int(comp.value) << lsb
+        return value
+
+    @value.setter
+    def value(self, value: int) -> None:
+        for (lsb, _, mask), comp in self._packing:
+            comp.value = (value >> lsb) & mask
+
+    @property
+    def _range(self) -> tuple[int, int]:
+        return 0, self._width-1
+
+    def __len__(self) -> int:
+        return self._width
 
 
 class BaseIO:
@@ -63,7 +117,8 @@ class BaseIO:
         self.__init_sigs = init_sigs[:]
         self.__resp_sigs = resp_sigs[:]
         self.__defaults = {}
-        # Pickup attributes
+        # Pickup all initiator and response signals wrapping each inside a
+        # SignalWrapper to normalise its behaviour across simulators
         self.__initiators, self.__responders = {}, {}
         for comp in self.__init_sigs:
             sig = "o" if self.__role == IORole.INITIATOR else "i"
@@ -75,7 +130,7 @@ class BaseIO:
                     f"{type(self).__name__}: Did not find I/O component {sig} on {dut}"
                 )
                 continue
-            sig_ptr = getattr(self.__dut, sig)
+            sig_ptr = SignalWrapper(getattr(self.__dut, sig))
             self.__initiators[comp] = sig_ptr
             setattr(self, comp, sig_ptr)
         for comp in self.__resp_sigs:
@@ -88,7 +143,7 @@ class BaseIO:
                     f"{type(self).__name__}: Did not find I/O component {sig} on {dut}"
                 )
                 continue
-            sig_ptr = getattr(self.__dut, sig)
+            sig_ptr = SignalWrapper(getattr(self.__dut, sig))
             self.__responders[comp] = sig_ptr
             setattr(self, comp, sig_ptr)
 
