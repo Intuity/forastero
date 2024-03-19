@@ -330,7 +330,7 @@ class SeqContext:
                 need.append(lock)
         # Queue against the arbiter for a slot to execute
         await self._arbiter.queue_for(self, need)
-        # Yield back to the
+        # Yield to allow the sequence to execute
         yield
         # Release any remaining locks
         self.log.debug(f"Releasing {len(lockables)} locks")

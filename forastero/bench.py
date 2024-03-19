@@ -29,6 +29,7 @@ from cocotb.clock import Clock
 from cocotb.handle import HierarchyObject, ModifiableObject
 from cocotb.log import SimLog, SimLogFormatter, SimTimeContextFilter
 from cocotb.result import SimTimeoutError
+from cocotb.task import Task
 from cocotb.triggers import ClockCycles, Event, with_timeout
 
 from .component import Component
@@ -233,19 +234,21 @@ class BaseBench:
         else:
             raise TypeError(f"Unsupported object: {comp_or_coro}")
 
-    def schedule(self, sequence: BaseSequence, blocking: bool = True) -> None:
+    def schedule(self, sequence: BaseSequence, blocking: bool = True) -> Task:
         """
         Schedule a sequence to execute as part of a testcase.
 
         :param sequence: The sequence to schedule
         :param blocking: Whether the sequence must complete before the test is
                          allowed to finish
+        :returns:        The scheduled task
         """
         task = cocotb.start_soon(
             sequence(self.fork_log("sequence"), self.random, self._arbiter)
         )
         if blocking:
             self._sequences.append(task)
+        return task
 
     def add_teardown(self, coro: Coroutine) -> None:
         """
