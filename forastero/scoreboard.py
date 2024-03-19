@@ -74,6 +74,11 @@ class Queue:
         """Register an 'on-push' event and wait for it to be set by a push"""
         return self.on_push_event.wait()
 
+    async def wait_for_not_empty(self) -> None:
+        """Wait until at least one entry exists in the queue"""
+        if self.level == 0:
+            await self.wait()
+
     def peek(self) -> Any:
         if len(self._entries) == 0:
             raise QueueEmptyError()
@@ -161,11 +166,13 @@ class Channel:
         :returns: Tuple of the monitor transaction and reference transaction
         """
         # Wait for monitor to capture a transaction
-        next_mon = await self._q_mon.pop()
-        # Once a monitor transaction arrives, lock out the drain procedure
+        await self._q_mon.wait_for_not_empty()
+        # When a monitor transaction arrives, lock out the drain procedure
         await self._lock.acquire()
         # Wait for the reference model to provide a transaction
         next_ref = await self._q_ref.pop()
+        # Pop the front of the monitor queue
+        next_mon = await self._q_mon.pop()
         # Return monitor-reference pair (don't release lock yet)
         return next_mon, next_ref
 
@@ -268,7 +275,7 @@ class FunnelChannel(Channel):
         :returns: Tuple of the monitor transaction and reference transaction
         """
         # Wait for monitor to capture a transaction
-        await self._q_mon.wait()
+        await self._q_mon.wait_for_not_empty()
         # Once a monitor transaction arrives, lock out the drain procedure
         await self._lock.acquire()
         # Peek at the front of all of the queues
