@@ -133,7 +133,12 @@ class BaseBench:
     @functools.cache
     def parse_parameters(cls) -> dict[str, Any]:
         parameters = cls.PARAM_DEFAULTS.copy()
-        with Path(cls.PARAM_FILE_PATH).open("r", encoding="utf-8") as fh:
+        if cls.PARAM_FILE_PATH is None:
+            logging.warning("No parameter file provided")
+            return parameters
+        path = Path(cls.PARAM_FILE_PATH)
+        assert path.exists(), f"Parameter file does not exist: {path}"
+        with path.open("r", encoding="utf-8") as fh:
             for key, value in json.load(fh).items():
                 parameters[key.lower().strip()] = value
         return parameters
