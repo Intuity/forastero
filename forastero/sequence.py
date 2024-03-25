@@ -119,9 +119,7 @@ class SeqLock:
         """
         assert isinstance(context, SeqContext)
         if self._lock.locked:
-            assert self._locked_by is context, (
-                f"Illegal attempt to unlock {self._name}"
-            )
+            assert self._locked_by is context, f"Illegal attempt to unlock {self._name}"
             self._locked_by = None
             self._lock.release()
             # Raise unlock event
@@ -489,11 +487,13 @@ class BaseSequence:
         """
 
         # Create a wrapper to allow log and random to be inserted by the bench
-        async def _inner(log: SimLog,
-                         random: Random,
-                         arbiter: SeqArbiter,
-                         clk: ModifiableObject,
-                         rst: ModifiableObject):
+        async def _inner(
+            log: SimLog,
+            random: Random,
+            arbiter: SeqArbiter,
+            clk: ModifiableObject,
+            rst: ModifiableObject,
+        ):
             # Create a context
             ctx = SeqContext(self, log, random, arbiter, clk, rst)
             # Check that provided components match expectation

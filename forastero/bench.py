@@ -249,11 +249,13 @@ class BaseBench:
         :returns:        The scheduled task
         """
         task = cocotb.start_soon(
-            sequence(self.fork_log("sequence"),
-                     self.random,
-                     self._arbiter,
-                     self.clk,
-                     self.rst)
+            sequence(
+                self.fork_log("sequence"),
+                self.random,
+                self._arbiter,
+                self.clk,
+                self.rst,
+            )
         )
         if blocking:
             self._sequences.append(task)
