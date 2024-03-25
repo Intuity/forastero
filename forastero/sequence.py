@@ -21,6 +21,7 @@ from random import Random
 from typing import Any, ClassVar, Generic, Self, TypeVar
 
 import cocotb
+from cocotb.handle import ModifiableObject
 from cocotb.log import SimLog
 from cocotb.triggers import Event, Lock
 
@@ -118,7 +119,7 @@ class SeqLock:
         """
         assert isinstance(context, SeqContext)
         if self._lock.locked:
-            assert self._locked_by is context
+            assert self._locked_by is context, f"Illegal attempt to unlock {self._name}"
             self._locked_by = None
             self._lock.release()
             # Raise unlock event
@@ -181,6 +182,14 @@ class SeqProxy(EventEmitter, Generic[C]):
         else:
             raise Exception(f"Cannot enqueue to '{type(self._component).__name__}'")
 
+    @property
+    def clk(self) -> ModifiableObject:
+        return self._component.clk
+
+    @property
+    def rst(self) -> ModifiableObject:
+        return self._component.rst
+
     def idle(self) -> None:
         """Forward idle through to the wrapped component"""
         return self._component.idle()
@@ -211,7 +220,10 @@ class SeqArbiter:
         :param context: The sequence context queueing
         :param locks:   The list of locks required
         """
-        self._log.debug(f"Sequence context {context._sequence.name} began queueing")
+        self._log.debug(
+            f"Sequence context {context.id} began queueing for: "
+            + ", ".join(x._name for x in locks)
+        )
         # Queue up the context, locks it requests, and the stall event
         self._queue.append((context, locks, evt := Event()))
         # Mark a new entry as having been pushed
@@ -220,27 +232,32 @@ class SeqArbiter:
         await evt.wait()
         # Log that the sequence has been released
         self._log.debug(
-            f"Sequence context {context._sequence.name} has finished queueing"
+            f"Sequence context {context.id} has finished queueing for: "
+            + ", ".join(x._name for x in locks)
         )
 
     async def _manage(self) -> None:
         """Executes in a loop to schedule sequences"""
-        while True:
+        log = self._log.getChild("schedule")
+        for idx in itertools.count():
             # Wait until something is queued up
             await self._evt_queue.wait()
+            # Log scheduling is starting
+            log.debug(f"Starting scheduling pass {idx}")
             # While stuff is queued, attempt to schedule it
             while self._queue:
                 # Keep track of which locks are available
                 available = {x for x in SeqLock.get_all_locks() if not x.locked}
                 # If no locks are available, wait for the next release
                 if not available:
+                    log.debug("Waiting for the next release (none available)")
                     await SeqContext.SEQ_SHARED_EVENT.wait_for(SeqContextEvent.UNLOCKED)
                     continue
                 # Randomise the order to process the queue
                 order = list(range(len(self._queue)))
                 self._random.shuffle(order)
                 # Schedule as many sequences as possible
-                self._log.debug(
+                log.debug(
                     f"Attempting to schedule {len(self._queue)} sequences "
                     f"with {len(available)} available locks"
                 )
@@ -262,13 +279,22 @@ class SeqArbiter:
                     # If no more locks are available, break out early
                     if not available:
                         break
-                self._log.debug(f"Scheduled {len(scheduled)} sequences")
+                log.debug(
+                    f"Scheduled {len(scheduled)} sequences, {len(locks)} locks remain"
+                )
                 # Prune the scheduled sequences
                 self._queue = [
                     x for i, x in enumerate(self._queue) if i not in scheduled
                 ]
-                # Wait for the next lock release
-                await SeqContext.SEQ_SHARED_EVENT.wait_for(SeqContextEvent.UNLOCKED)
+                # If scheduling was unsuccessful, wait for the next release
+                # NOTE: It is possible for items to be appended into the queue
+                #       while scheduling is taking place (due the the await on
+                #       lock acquisition), so it is unsafe to always wait
+                if not scheduled:
+                    log.debug("Waiting for the next release (scheduling exhausted)")
+                    await SeqContext.SEQ_SHARED_EVENT.wait_for(SeqContextEvent.UNLOCKED)
+            # Log at the end of this pass
+            log.debug(f"Finished scheduling pass {idx}")
             # Clear the trigger event so that the next queue_for call retriggers
             # the scheduling routine
             self._evt_queue.clear()
@@ -289,7 +315,13 @@ class SeqContext:
     SEQ_SHARED_EVENT: ClassVar[EventEmitter] = EventEmitter()
 
     def __init__(
-        self, sequence: "BaseSequence", log: SimLog, random: Random, arbiter: SeqArbiter
+        self,
+        sequence: "BaseSequence",
+        log: SimLog,
+        random: Random,
+        arbiter: SeqArbiter,
+        clk: ModifiableObject,
+        rst: ModifiableObject,
     ) -> None:
         self._sequence = sequence
         self._arbiter = arbiter
@@ -299,6 +331,9 @@ class SeqContext:
         self.log = log.getChild(self.id)
         # Fork the root random to ensure sequence run-to-run consistency
         self.random = Random(random.random())
+        # Reference clock and reset
+        self.clk = clk
+        self.rst = rst
         # Lock re-entrancy flag
         self._locks_active = False
 
@@ -333,7 +368,9 @@ class SeqContext:
         # Yield to allow the sequence to execute
         yield
         # Release any remaining locks
-        self.log.debug(f"Releasing {len(lockables)} locks")
+        self.log.debug(
+            f"Releasing {len(lockables)} locks: " + ", ".join(x._name for x in need)
+        )
         for lock in need:
             if lock._locked_by is self:
                 lock.release(self)
@@ -450,9 +487,15 @@ class BaseSequence:
         """
 
         # Create a wrapper to allow log and random to be inserted by the bench
-        async def _inner(log: SimLog, random: Random, arbiter: SeqArbiter):
+        async def _inner(
+            log: SimLog,
+            random: Random,
+            arbiter: SeqArbiter,
+            clk: ModifiableObject,
+            rst: ModifiableObject,
+        ):
             # Create a context
-            ctx = SeqContext(self, log, random, arbiter)
+            ctx = SeqContext(self, log, random, arbiter, clk, rst)
             # Check that provided components match expectation
             comps = {}
             for name, ctype in self._requires.items():
