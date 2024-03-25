@@ -294,7 +294,9 @@ Each sequence scheduled is provided with a unique instance of
    in such a way that a given sequence should be invariant run-to-run even if
    other sequence is altered;
  * `seq.lock` and `seq.release` allow a testcase to claim and release locks on
-   drivers and monitors as well as arbitrary named locks.
+   drivers and monitors as well as arbitrary named locks;
+ * `seq.ctx` and `seq.rst` provide access to the same clock and reset signals
+   that the main testbench uses.
 
 A sequence should always use the context for logging and random number generation
 rather than accessing the root testbench directly.
