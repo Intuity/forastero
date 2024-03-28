@@ -16,7 +16,7 @@ from enum import Enum, auto
 
 import cocotb
 from cocotb.queue import Queue
-from cocotb.triggers import RisingEdge
+from cocotb.triggers import Event, RisingEdge
 from cocotb.utils import get_sim_time
 
 from .component import Component
@@ -56,18 +56,30 @@ class BaseDriver(Component):
         """Return how many entries are queued up"""
         return self._queue.qsize()
 
-    def enqueue(self, transaction: BaseTransaction) -> None:
+    def enqueue(
+        self, transaction: BaseTransaction, wait_for: DriverEvent | None = None
+    ) -> Event | None:
         """
         Queue up a transaction to be driven onto the interface
 
         :param transaction: Transaction to queue, must inherit from BaseTransaction
+        :param wait_for:    When defined, this will return an event that can be
+                            monitored for a given transaction event occurring
         """
+        # Sanity check
         if not isinstance(transaction, BaseTransaction):
             raise TypeError(
                 f"Transaction objects should inherit from "
                 f"BaseTransaction unlike {transaction}"
             )
+        # Does this transaction need an event?
+        if wait_for is not None:
+            transaction._f_event = wait_for
+            transaction._c_event = Event()
+        # Queue up the transaction with no delay
         self._queue.put_nowait(transaction)
+        # Return the cocotb Event (if it was set)
+        return transaction._c_event
 
     async def _driver_loop(self) -> None:
         """Main loop for driving transactions onto the interface"""
@@ -75,14 +87,26 @@ class BaseDriver(Component):
         await RisingEdge(self.clk)
         self._ready.set()
         while True:
+            # Pickup next event to drive
             obj = await self._queue.get()
+            # Wait until reset is deasserted
             while self.rst.value == 1:
                 await RisingEdge(self.clk)
+            # Lock out the driver (prevents shutdown mid-stimulus)
             await self.lock()
+            # Set the timestamp where the transaction was about to be driven
             obj.timestamp = get_sim_time(units="ns")
+            # Notify any pre-drive subscribers
             self.publish(DriverEvent.PRE_DRIVE, obj)
+            if obj._f_event is DriverEvent.PRE_DRIVE:
+                obj._c_event.set()
+            # Drive the transaction
             await self.drive(obj)
+            # Notify any post-drive subscribers
             self.publish(DriverEvent.POST_DRIVE, obj)
+            if obj._f_event is DriverEvent.POST_DRIVE:
+                obj._c_event.set()
+            # Release the lock
             self.release()
 
     async def drive(self, obj: BaseTransaction) -> None:

@@ -131,6 +131,28 @@ Note that `tb.stream_init` refers to the instance of `StreamInitiator` that was
 registered onto the testbench in the previous example. The `for` loop then
 generates a number of `StreamTransaction` objects carrying random data.
 
+Drivers can return an event to allow a test or sequence to determine when a
+particular transaction reaches a pre or post-drive state. When `wait_for` is
+provided, the `enqueue` function will return a cocotb `Event`, and this can be
+awaited:
+
+```python title="tb/testcases/random.py"
+from cocotb.log import SimLog
+
+from forastero.driver import DriverEvent
+
+from ..stream import StreamTransaction
+from ..testbench import Testbench
+
+@Testbench.testcase()
+async def random(tb: Testbench, log: SimLog):
+    for _ in range(100):
+        await tb.stream_init.enqueue(
+            StreamTransaction(data=tb.random.getrandbits(32)),
+            wait_for=DriverEvent.POST_DRIVE
+        ).wait()
+```
+
 ## Monitors
 
 Monitors inherit from [BaseMonitor](./classes/monitor.md) and must implement the

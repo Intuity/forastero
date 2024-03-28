@@ -54,7 +54,7 @@ async def very_simple_seq(ctx: SeqContext,
     must identify the driver and monitor that matches each requirement.
 
 A sequence may also accept parameters in order to vary it's behaviour - in the
-example below two arguments of `repetitions` and `data_bit_width` are provided
+example below two arguments of `repetitions` and `data_width` are provided
 that the sequence can then use to guide the transactions it produces:
 
 ```python title="tb/sequences/sequence.py"
@@ -70,7 +70,7 @@ async def very_simple_seq(ctx: SeqContext,
                           stream_drv: SeqProxy[StreamInitiator],
                           stream_mon: SeqProxy[StreamMonitor],
                           repetitions: int = 100,
-                          data_bit_width: int = 64):
+                          data_width: int = 64):
     ...
 ```
 
@@ -240,18 +240,18 @@ from ..testbench import Testbench
 async def random_traffic(ctx: SeqContext,
                          stream_drv: SeqProxy[StreamInitiator],
                          length: int = 1,
-                         bit_width: int = 32):
+                         data_width: int = 32):
     for idx in range(length):
         async with ctx.lock(stream_drv):
             ctx.log.info(f"Driving packet {idx}")
-            stream_drv.enqueue(StreamTransaction(data=ctx.random.getrandbits(bit_width)))
+            stream_drv.enqueue(StreamTransaction(data=ctx.random.getrandbits(data_width)))
             await stream_drv.wait_for(DriverEvent.PRE_DRIVE)
 
 @Testbench.testcase()
 async def stress_all_interfaces(tb: Testbench, log: SimLog):
     """Drive lots of random traffic on all stream interfaces"""
     for stream in (tb.stream_a, tb.stream_b, tb.stream_c):
-        tb.schedule(random_traffic(stream_drv=stream, length=1000, bit_width=64))
+        tb.schedule(random_traffic(stream_drv=stream, length=1000, data_width=64))
 ```
 
 !!! note
@@ -268,13 +268,13 @@ arguments of the sequence function:
 async def random_traffic(ctx: SeqContext,
                          stream_drv: SeqProxy[StreamInitiator],
                          length: int = 1,
-                         bit_width: int = 32):
+                         data_width: int = 32):
 ```
 
 ...and the `schedule` call:
 
 ```python
-tb.schedule(random_traffic(stream_drv=stream, length=1000, bit_width=64))
+tb.schedule(random_traffic(stream_drv=stream, length=1000, data_width=64))
 ```
 
 For those struggling to spot the difference, the `ctx` argument is missing from
@@ -311,3 +311,77 @@ The current arbitration implementation is based on random ordering of the queued
 sequences (i.e. everything currently waiting on a `async with ctx.lock(...)` call).
 Future improvements to Forastero will introduce more complex arbitration functions
 that allow control over the balancing of different sequences.
+
+## Randomised Sequence Arguments
+
+When defining sequences it is good practice to make them reusable and provide
+arguments to vary the stimulus that the sequence generates. In the sections
+above it was shown how to declare normal arguments with static default values,
+but Forastero also offers the possibility to randomise the values of the
+arguments within simple constraints.
+
+```python title="tb/sequences/sequence.py"
+import forastero
+from forastero.sequence import SeqContext, SeqProxy
+
+from ..stream import StreamInitiator, StreamMonitor
+
+@forastero.sequence()
+@forastero.requires("stream_drv", StreamInitiator)
+@forastero.requires("stream_mon", StreamMonitor)
+@forastero.randarg("repetitions", range=(100, 300))
+@forastero.randarg("data_mode", choices=("random", "zero", "one", "increment"))
+async def rand_data_seq(ctx: SeqContext,
+                        stream_drv: SeqProxy[StreamInitiator],
+                        stream_mon: SeqProxy[StreamMonitor],
+                        repetitions: int,
+                        data_mode: str,
+                        data_width: int = 64):
+    ...
+```
+
+The example above defines three arguments to the sequence, of which two are
+randomised:
+
+ * `repetitions` will take a random value between 100 and 300 (inclusive);
+ * `data_mode` will select a random string from `random`, `zero`, `one`, or
+   `increment`.
+
+The `data_width` argument is not randomised as this is expected to be matched to
+a design constant (i.e. the bus width).
+
+The `randarg` decorator always requires a variable name and exactly one randomisation
+mode, selected from:
+
+ * `range=(X, Y)` selects a random value in the range X to Y inclusive;
+ * `bit_width=X` selects a random value over a bit width of X bits;
+ * `choices=(X, Y, Z, ...)` makes a random choice from a restricted list of values.
+
+Randomisation is performed at the point the sequence is scheduled, so code running
+inside the sequence will see a fixed value. The log contains messages (at debug
+verbosity) detailing the sequence and variables that was scheduled:
+
+```bash
+21.00ns DEBUG  tb.sequence.rand_data_seq[0]  Launching rand_data_seq[0] with variables: {'repetitions': 127, 'data_mode': 'one'}
+```
+
+The values and randomisation behaviour can also be overridden at the point the
+sequence is scheduled, for example:
+
+```python title="tb/testcases/streams.py"
+@Testbench.testcase()
+async def random_traffic(tb: Testbench, log: SimLog):
+    # Schedule a fixed length burst of entirely random traffic
+    tb.schedule(rand_data_seq(repetitions=10, data_mode="random"))
+    # Schedule a burst between 30 and 60 transactions of zero or one traffic
+    tb.schedule(rand_data_seq(repetitions_range=(30, 60),
+                              data_mode_choices=("one", "zero")))
+```
+
+When providing an override:
+
+ * `<X>=123` will fix the argument to a static value;
+ * `<X>_range=(Y, Z)` will override the range randomisation between `Y` and `Z`;
+ * `<X>_bit_width=Y` will override the bit-width randomisation to `Y` bits;
+ * `<X>_choices=(A, B, C)` will override the choices to be selected from to be
+   one of `A`, `B`, or `C`.
