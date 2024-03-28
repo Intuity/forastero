@@ -126,6 +126,94 @@ class SeqLock:
             SeqContext.SEQ_SHARED_EVENT.publish(SeqContextEvent.UNLOCKED, None)
 
 
+class SeqRandomVariable:
+    """
+    Captures the definition of a random variable used in a sequence along with
+    how it should be randomised.
+
+    :param name:      Name of the variable
+    :param bit_width: Randomise over a given number of bits
+    :param range:     Randomise over a given range (int or float)
+    :param choices:   Make a random selection from a list of choices
+    """
+
+    SUFFIXES: ClassVar[tuple[str]] = ("bit_width", "range", "choices")
+
+    def __init__(
+        self,
+        name: str,
+        bit_width: int | None = None,
+        range: tuple[int | float, int | float] | None = None,  # noqa: A002
+        choices: tuple[Any] | None = None,
+    ) -> None:
+        # Take references
+        self.name = name.strip().replace(" ", "_")
+        self.bit_width = bit_width
+        self.range = range
+        self.choices = choices
+        # Sanity checks
+        assert len(name) > 0, "Variable name cannot be an empty string"
+        assert not name.endswith(
+            "_bitwidth"
+        ), "Variable name must not end with '_bitwidth'"
+        assert not name.endswith("_range"), "Variable name must not end with '_range'"
+        assert not name.endswith(
+            "_choices"
+        ), "Variable name must not end with '_choices'"
+        assert (
+            len([x for x in (bit_width, range, choices) if x is not None]) <= 1
+        ), "Only one of bit width, range, or choices may be specified"
+        if bit_width is not None:
+            assert (
+                isinstance(bit_width, int) and bit_width > 0
+            ), "Bit width must be an integer value greater than zero"
+        elif range is not None:
+            assert (
+                isinstance(range, tuple) and len(range) == 2
+            ), "Range must be a tuple of two values"
+            assert all(
+                isinstance(x, int | float) for x in range
+            ), "All entries of the range must be integer or float"
+        elif choices is not None:
+            assert (
+                isinstance(choices, tuple) and len(choices) > 0
+            ), "Choices must be a tuple of at least one value"
+
+    @property
+    def varnames(self) -> tuple[str]:
+        return [self.name] + [f"{self.name}_{s}" for s in self.SUFFIXES]
+
+    def randomise(
+        self,
+        random: Random,
+        bit_width: int | None = None,
+        range: tuple[int | float, int | float] | None = None,  # noqa: A002
+        choices: tuple[Any] | None = None,
+    ) -> Any:
+        # If any overrides are provided, evaluate them first
+        if bit_width is not None:
+            return random.getrandbits(bit_width)
+        elif range is not None:
+            if all(isinstance(x, int) for x in range):
+                return random.randrange(*range)
+            else:
+                return random.uniform(*range)
+        elif choices is not None:
+            return random.choice(choices)
+        # Otherwise evaluate default behaviour
+        if self.bit_width is not None:
+            return random.getrandbits(self.bit_width)
+        elif self.range is not None:
+            if all(isinstance(x, int) for x in self.range):
+                return random.randrange(*self.range)
+            else:
+                return random.uniform(*self.range)
+        elif self.choices is not None:
+            return random.choices(self.choices)
+        # Should not get here!
+        raise Exception("Failed to select a randomisation method")
+
+
 C = TypeVar("C")
 
 
@@ -165,11 +253,12 @@ class SeqProxy(EventEmitter, Generic[C]):
         if not self._lock._lock.locked or self._holds_lock:
             self.publish(event, obj)
 
-    def enqueue(self, *obj: Any) -> None:
+    def enqueue(self, *args: Any, **kwds: Any) -> Event | None:
         """
         Forward an enqueue request through from the proxy to the wrapped driver.
 
-        :param *obj: The object(s) to enqueue
+        :param *args: Arguments to forward
+        :param *kwds: Keyword arguments to forward
         """
         if isinstance(self._component, BaseDriver):
             if not self._holds_lock:
@@ -178,7 +267,7 @@ class SeqProxy(EventEmitter, Generic[C]):
                     f"without first acquiring the lock, instead the lock is held "
                     f"by {self._lock._locked_by}"
                 )
-            self._component.enqueue(*obj)
+            return self._component.enqueue(*args, **kwds)
         else:
             raise Exception(f"Cannot enqueue to '{type(self._component).__name__}'")
 
@@ -297,7 +386,9 @@ class SeqArbiter:
                     # Clear trigger event so that the next queue_for raises it
                     self._evt_queue.clear()
                     await First(
-                        SeqContext.SEQ_SHARED_EVENT.get_wait_event(SeqContextEvent.UNLOCKED).wait(),
+                        SeqContext.SEQ_SHARED_EVENT.get_wait_event(
+                            SeqContextEvent.UNLOCKED
+                        ).wait(),
                         self._evt_queue.wait(),
                     )
             # Log at the end of this pass
@@ -420,6 +511,7 @@ class BaseSequence:
         self._fn = fn
         self._requires: dict[str, Any] = {}
         self._locks: list[str] = []
+        self._randargs: dict[str, SeqRandomVariable] = {}
 
     def __repr__(self) -> str:
         return f'<BaseSequence name="{self.name}">'
@@ -484,6 +576,27 @@ class BaseSequence:
         self._locks.append(lock_name)
         return self
 
+    def add_randarg(
+        self,
+        name: str,
+        bit_width: int | None = None,
+        range: tuple[int | float, int | float] | None = None,  # noqa: A002
+        choices: tuple[Any] | None = None,
+    ) -> Self:
+        """
+        Define an argument that can be randomised in a number of different ways.
+        Only one method of randomisation may be specified.
+
+        :param name:      Name of the argument
+        :param bit_width: Randomise over a given number of bits
+        :param range:     Randomise over a given range (int or float)
+        :param choices:   Make a random selection from a list of choices
+        :returns:         Self to allow for simple chaining
+        """
+        rv = SeqRandomVariable(name, bit_width, range, choices)
+        self._randargs[rv.name] = rv
+        return self
+
     def __call__(self, **kwds):
         """
         Call the underlying sequence with any parameters that it requires, and
@@ -525,13 +638,42 @@ class BaseSequence:
             locks = {}
             for lock in self._locks:
                 locks[lock] = SeqLock.get_named_lock(lock)
+            # Identify random arguments and overrides
+            arguments = {}
+            for name, rv in self._randargs.items():
+                # Identify any matching overrides
+                overrides = [(k, v) for k, v in kwds.items() if k in rv.varnames]
+                assert len(overrides) in (0, 1), (
+                    f"Expecting a maximum of one override for {name}, instead "
+                    f"found: {', '.join(x[0] for x in overrides)}"
+                )
+                # If not overridden, immediately randomise
+                if not overrides:
+                    arguments[name] = rv.randomise(ctx.random)
+                    continue
+                # Determine override mode
+                o_name, o_val = overrides[0]
+                for sfx in SeqRandomVariable.SUFFIXES:
+                    if o_name.endswith("_" + sfx):
+                        arguments[name] = rv.randomise(ctx.random, **{sfx: o_val})
+                        break
+                # If no override mode was matched, this is a fixed value
+                else:
+                    arguments[name] = o_val
+                # Delete from kwds
+                del kwds[o_name]
+            # Fill in all remaining values
+            for name, value in kwds.items():
+                arguments[name] = value
+            # Log what's about to launch
+            ctx.log.debug(f"Launching {ctx.id} with arguments: {arguments}")
             # If auto-locking requested, wrap with a lock context
             if self.auto_lock:
                 async with ctx.lock(*comps.values(), *locks.values()):
-                    await self._fn(ctx, **comps, **locks, **kwds)
+                    await self._fn(ctx, **comps, **locks, **arguments)
             # Otherwise just launch the sequence directly
             else:
-                await self._fn(ctx, **comps, **locks, **kwds)
+                await self._fn(ctx, **comps, **locks, **arguments)
 
         # Return wrapped coroutine
         return _inner
@@ -571,5 +713,31 @@ def requires(req_name: str, req_type: Any | None = None) -> BaseSequence:
             return BaseSequence.register(fn).add_lock(req_name)
         else:
             return BaseSequence.register(fn).add_requirement(req_name, req_type)
+
+    return _inner
+
+
+def randarg(
+    name: str,
+    bit_width: int | None = None,
+    range: tuple[int | float, int | float] | None = None,  # noqa: A002
+    choices: tuple[Any] | None = None,
+) -> BaseSequence:
+    """
+    Decorator used to add a randomised argument to a sequence definition, that
+    can be randomised in a number of different ways. Only one method of
+    randomisation may be specified.
+
+    :param name:      Name of the argument
+    :param bit_width: Randomise over a given number of bits
+    :param range:     Randomise over a given range (int or float)
+    :param choices:   Make a random selection from a list of choices
+    :returns:         Wrapped sequence
+    """
+
+    def _inner(fn: Callable) -> Callable:
+        return BaseSequence.register(fn).add_randarg(
+            name=name, bit_width=bit_width, range=range, choices=choices
+        )
 
     return _inner

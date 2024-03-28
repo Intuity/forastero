@@ -13,19 +13,30 @@
 # limitations under the License.
 
 import dataclasses
+from enum import Enum
 from typing import Any, Optional
 
 from cocotb.utils import get_sim_time
+from cocotb.triggers import Event
 from tabulate import tabulate
 
 
 @dataclasses.dataclass(kw_only=True)
 class BaseTransaction:
-    """Base transaction object type"""
+    """
+    Base transaction object type
+
+    :param timestamp: The time at which the event occurred
+    :param _f_event:  Forastero event type to trigger on
+    :param _c_event:  The cocotb Event to trigger when _f_event is reached
+    """
 
     timestamp: int = dataclasses.field(
         default_factory=lambda: get_sim_time(units="ns"), compare=False
     )
+
+    _f_event: Enum | None = dataclasses.field(default=None, compare=False)
+    _c_event: Event | None = dataclasses.field(default=None, compare=False)
 
     def format(self, field: str, value: Any) -> str:
         """
@@ -61,6 +72,8 @@ class BaseTransaction:
         # Assemble rows
         rows = []
         for field in dataclasses.fields(self):
+            if field.name in ("_f_event", "_c_event"):
+                continue
             a_val = self.format(field.name, getattr(self, field.name))
             cols = [field.name, a_val]
             if other is not None:

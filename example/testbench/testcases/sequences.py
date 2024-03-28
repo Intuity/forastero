@@ -30,7 +30,8 @@ from ..testbench import Testbench
 
 @forastero.sequence()
 @forastero.requires("stream", StreamInitiator)
-async def random_traffic(ctx: SeqContext, stream: StreamInitiator, length: int = 1000):
+@forastero.randarg("length", range=(100, 1000))
+async def random_traffic(ctx: SeqContext, stream: StreamInitiator, length: int):
     """Generates random traffic"""
     ctx.log.info(f"Generating {length} random transactions")
     for _ in range(length):
@@ -41,11 +42,12 @@ async def random_traffic(ctx: SeqContext, stream: StreamInitiator, length: int =
 @forastero.sequence(auto_lock=True)
 @forastero.requires("stream_a", StreamInitiator)
 @forastero.requires("stream_b", StreamInitiator)
+@forastero.randarg("length", range=(1000, 3000))
 async def burst_on_a_only(
     ctx: SeqContext,
     stream_a: StreamInitiator,
     stream_b: StreamInitiator,
-    length: int = 64,
+    length: int,
 ):
     """Generates a burst only on one channel"""
     await stream_a.idle()
@@ -58,25 +60,55 @@ async def burst_on_a_only(
 
 @forastero.sequence()
 @forastero.requires("stream", StreamResponder)
-async def random_backpressure(ctx: SeqContext, stream: StreamResponder):
-    """Generates infinite random backpressure"""
-    ctx.log.info("Generating infinite random backpressure")
+@forastero.randarg("min_interval", range=(1, 10))
+@forastero.randarg("max_interval", range=(10, 20))
+@forastero.randarg("backpressure", range=(0, 0.9))
+async def random_backpressure(
+    ctx: SeqContext,
+    stream: StreamResponder,
+    min_interval: int,
+    max_interval: int,
+    backpressure: float,
+):
+    """
+    Generate random backpressure using the READY signal of a stream interface,
+    with options to tune how often backpressure is applied.
+
+    :param min_interval: Shortest time to hold ready constant
+    :param max_interval: Longest time to hold ready constant
+    :param backpressure: Weighting proportion for how often ready should be low,
+                         i.e. values approaching 1 mean always backpressure,
+                         while values approaching 0 mean never backpressure
+    """
+    ctx.log.info("Generating random stream backpressure")
     async with ctx.lock(stream):
         while True:
-            stream.enqueue(
+            await stream.enqueue(
                 StreamBackpressure(
-                    ready=ctx.random.choice((True, False)),
-                    cycles=ctx.random.randint(1, 10),
-                )
-            )
-            await stream.wait_for(DriverEvent.PRE_DRIVE)
+                    ready=ctx.random.choices(
+                        (True, False),
+                        weights=(1.0 - backpressure, backpressure),
+                        k=1,
+                    )[0],
+                    cycles=ctx.random.randint(min_interval, max_interval),
+                ),
+                DriverEvent.PRE_DRIVE
+            ).wait()
 
 
-@Testbench.testcase(timeout=25000)
+@Testbench.testcase(timeout=100000)
 async def random_seq(tb: Testbench, log: SimLog) -> None:
     tb.schedule(random_traffic(stream=tb.a_init, length=2000))
     tb.schedule(random_traffic(stream=tb.b_init, length=2000))
     for _ in range(10):
-        tb.schedule(burst_on_a_only(stream_a=tb.a_init, stream_b=tb.b_init, length=250))
-        tb.schedule(burst_on_a_only(stream_a=tb.b_init, stream_b=tb.a_init, length=250))
+        tb.schedule(
+            burst_on_a_only(
+                stream_a=tb.a_init, stream_b=tb.b_init, length_range=(100, 500)
+            )
+        )
+        tb.schedule(
+            burst_on_a_only(
+                stream_a=tb.b_init, stream_b=tb.a_init, length_range=(100, 500)
+            )
+        )
     tb.schedule(random_backpressure(stream=tb.x_resp), blocking=False)
