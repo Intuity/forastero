@@ -92,7 +92,7 @@ async def random_backpressure(
                     )[0],
                     cycles=ctx.random.randint(min_interval, max_interval),
                 ),
-                DriverEvent.PRE_DRIVE
+                DriverEvent.PRE_DRIVE,
             ).wait()
 
 

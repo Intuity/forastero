@@ -56,9 +56,9 @@ class BaseDriver(Component):
         """Return how many entries are queued up"""
         return self._queue.qsize()
 
-    def enqueue(self,
-                transaction: BaseTransaction,
-                wait_for: DriverEvent | None = None) -> Event | None:
+    def enqueue(
+        self, transaction: BaseTransaction, wait_for: DriverEvent | None = None
+    ) -> Event | None:
         """
         Queue up a transaction to be driven onto the interface
 

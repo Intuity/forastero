@@ -16,8 +16,8 @@ import dataclasses
 from enum import Enum
 from typing import Any, Optional
 
-from cocotb.utils import get_sim_time
 from cocotb.triggers import Event
+from cocotb.utils import get_sim_time
 from tabulate import tabulate
 
 
