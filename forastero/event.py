@@ -88,8 +88,12 @@ class EventEmitter:
         for event in events:
             event.set(data=obj)
 
-    async def wait_for(self, event: Enum) -> Any:
+    def get_wait_event(self, event: Enum) -> Event:
         evt = Event()
         self._waiting[event].append(evt)
+        return evt
+
+    async def wait_for(self, event: Enum) -> Any:
+        evt = self.get_wait_event(event)
         await evt.wait()
         return evt.data

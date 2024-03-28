@@ -23,7 +23,7 @@ from typing import Any, ClassVar, Generic, Self, TypeVar
 import cocotb
 from cocotb.handle import ModifiableObject
 from cocotb.log import SimLog
-from cocotb.triggers import Event, Lock
+from cocotb.triggers import Event, First, Lock
 
 from .component import Component
 from .driver import BaseDriver
@@ -286,13 +286,20 @@ class SeqArbiter:
                 self._queue = [
                     x for i, x in enumerate(self._queue) if i not in scheduled
                 ]
-                # If scheduling was unsuccessful, wait for the next release
-                # NOTE: It is possible for items to be appended into the queue
-                #       while scheduling is taking place (due the the await on
-                #       lock acquisition), so it is unsafe to always wait
+                # If scheduling was unsuccessful then either wait for locks to
+                # be released or new sequences to be scheduled
+                # NOTE: As the scheduling loop contains an `await` it is
+                #       possible for new sequences to be queued up after the
+                #       initial "order" is determined. This is why the code below
+                #       only waits if no sequences were successfully scheduled.
                 if not scheduled:
-                    log.debug("Waiting for the next release (scheduling exhausted)")
-                    await SeqContext.SEQ_SHARED_EVENT.wait_for(SeqContextEvent.UNLOCKED)
+                    log.debug("Waiting for a release or a sequence to be scheduled")
+                    # Clear trigger event so that the next queue_for raises it
+                    self._evt_queue.clear()
+                    await First(
+                        SeqContext.SEQ_SHARED_EVENT.get_wait_event(SeqContextEvent.UNLOCKED).wait(),
+                        self._evt_queue.wait(),
+                    )
             # Log at the end of this pass
             log.debug(f"Finished scheduling pass {idx}")
             # Clear the trigger event so that the next queue_for call retriggers
