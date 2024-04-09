@@ -30,7 +30,7 @@ from cocotb.handle import HierarchyObject, ModifiableObject
 from cocotb.log import SimLog, SimLogFormatter, SimTimeContextFilter
 from cocotb.result import SimTimeoutError
 from cocotb.task import Task
-from cocotb.triggers import ClockCycles, Event, with_timeout
+from cocotb.triggers import ClockCycles, Event, RisingEdge, with_timeout
 
 from .component import Component
 from .driver import BaseDriver
@@ -390,6 +390,13 @@ class BaseBench:
                             tb._orch_log.error(traceback.format_exc())
                             raise e
                         tb._orch_log.info("DUT reset complete")
+
+                    # If not resetting, at least initialise I/O
+                    else:
+                        tb._orch_log.info("Initialising I/O")
+                        await tb.initialise()
+                        await RisingEdge(tb.clk)
+                        tb._orch_log.info("I/O initialisation complete")
 
                     # Mark ready
                     tb.evt_ready.set()

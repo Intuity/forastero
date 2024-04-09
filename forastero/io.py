@@ -15,7 +15,9 @@
 from enum import IntEnum
 from typing import Any
 
-from cocotb.handle import HierarchyObject, NonHierarchyObject
+from cocotb.handle import (
+    HierarchyObject, NonHierarchyObject, NonHierarchyIndexableObject, ModifiableObject
+)
 from cocotb.log import SimLog
 
 
@@ -42,18 +44,21 @@ class SignalWrapper:
     :param hier: The signal hierarchy object
     """
 
-    def __init__(self, hier: HierarchyObject | NonHierarchyObject) -> None:
+    def __init__(self, hier: HierarchyObject | NonHierarchyObject | NonHierarchyIndexableObject) -> None:
         self._hier = hier
 
         # Recursively discover all components (in case of a nested struct)
         def _expand(level):
-            if isinstance(level, HierarchyObject):
+            if isinstance(level, ModifiableObject):
+                yield level
+            elif isinstance(level, HierarchyObject | NonHierarchyIndexableObject):
                 for comp in level:
                     yield from _expand(comp)
             else:
-                yield level
+                raise Exception(f"Unexpected object {level}")
 
         all_components = list(_expand(self._hier))
+
         # Figure out how the bit fields pack into the bit vector, precalculating
         # the MSB, LSB, and mask to save compute later
         self._packing = []
@@ -67,6 +72,9 @@ class SignalWrapper:
             width = len(comp)
             self._packing.append(((rel_lsb, rel_msb, (1 << width) - 1), comp))
             self._width += width
+
+        # Check that at least one object is place in packing
+        assert self._packing, f"Could not determine packing of {hier}"
 
     @property
     def value(self) -> int:
