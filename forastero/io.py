@@ -44,20 +44,37 @@ class SignalWrapper:
     :param hier: The signal hierarchy object
     """
 
-    def __init__(self, hier: HierarchyObject | NonHierarchyObject | NonHierarchyIndexableObject) -> None:
+    def __init__(self,
+                 hier: HierarchyObject | NonHierarchyObject | NonHierarchyIndexableObject,
+                 hints: dict[tuple[str], str] | None = None) -> None:
         self._hier = hier
+        self._hints = hints or {}
 
         # Recursively discover all components (in case of a nested struct)
-        def _expand(level):
+        def _expand(level, hints, _path=None):
+            _path = _path or []
             if isinstance(level, ModifiableObject):
                 yield level
             elif isinstance(level, HierarchyObject | NonHierarchyIndexableObject):
+                # Attempt to iterate the object
+                unrolled = []
                 for comp in level:
-                    yield from _expand(comp)
+                    unrolled += list(_expand(comp, hints, _path=_path+[comp.name]))
+                # If no objects were discovered, see if a hint was provided
+                if not unrolled and (hint := hints.get(tuple(_path), None)):
+                    if isinstance(hint, list | tuple):
+                        for sub_hint in hint:
+                            unrolled += list(_expand(getattr(level, sub_hint), hints, _path=_path+[sub_hint]))
+                    else:
+                        unrolled += list(_expand(getattr(level, hint), hints, _path=_path+[hint]))
+                # Check unroll was successful
+                assert unrolled, f"Could not unpack signal level {level}"
+                # Return unrolled items in the same order
+                yield from unrolled
             else:
                 raise Exception(f"Unexpected object {level}")
 
-        all_components = list(_expand(self._hier))
+        all_components = list(_expand(self._hier, self._hints))
 
         # Figure out how the bit fields pack into the bit vector, precalculating
         # the MSB, LSB, and mask to save compute later
