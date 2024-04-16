@@ -205,7 +205,7 @@ class BaseBench:
         scoreboard: bool = True,
         scoreboard_verbose: bool = False,
         scoreboard_queues: list[str] | None = None,
-    ) -> None:
+    ) -> Component | Coroutine:
         """
         Register a driver, monitor, or coroutine with the testbench. Drivers and
         monitors must be provided a name and their random seeding will be setup
@@ -238,6 +238,7 @@ class BaseBench:
                 )
         else:
             raise TypeError(f"Unsupported object: {comp_or_coro}")
+        return comp_or_coro
 
     def schedule(self, sequence: BaseSequence, blocking: bool = True) -> Task:
         """
