@@ -205,7 +205,7 @@ class BaseBench:
         scoreboard: bool = True,
         scoreboard_verbose: bool = False,
         scoreboard_queues: list[str] | None = None,
-    ) -> None:
+    ) -> Component | Coroutine:
         """
         Register a driver, monitor, or coroutine with the testbench. Drivers and
         monitors must be provided a name and their random seeding will be setup
@@ -238,6 +238,7 @@ class BaseBench:
                 )
         else:
             raise TypeError(f"Unsupported object: {comp_or_coro}")
+        return comp_or_coro
 
     def schedule(self, sequence: BaseSequence, blocking: bool = True) -> Task:
         """
@@ -399,9 +400,10 @@ class BaseBench:
                         await comp.ready()
 
                     # Are there any parameters for this test?
-                    params = {
-                        x: cls.get_parameter(x) for x in cls.TEST_REQ_PARAMS[self._func]
-                    }
+                    params = {}
+                    for key in cls.TEST_REQ_PARAMS[self._func]:
+                        if (value := cls.get_parameter(key)) is not None:
+                            params[key] = value
 
                     # Create a forked log
                     log = tb.fork_log("testcase", self._func.__name__)
