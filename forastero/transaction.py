@@ -52,7 +52,7 @@ class BaseTransaction:
         elif isinstance(value, int):
             return f"0x{value:X}"
         else:
-            return value
+            return str(value)
 
     def tabulate(self, other: Optional["BaseTransaction"] = None) -> str:
         """
