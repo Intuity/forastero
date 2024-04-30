@@ -16,8 +16,8 @@ from cocotb.handle import HierarchyObject
 
 from forastero.bench import BaseBench
 from forastero.driver import DriverEvent
-from forastero.monitor import MonitorEvent
 from forastero.io import IORole
+from forastero.monitor import MonitorEvent
 
 from .stream import (
     StreamInitiator,

@@ -98,11 +98,9 @@ class Channel:
     :param filter_fn: Function to filter or modify captured transactions
     """
 
-    def __init__(self,
-                 name: str,
-                 monitor: BaseMonitor,
-                 log: SimLog,
-                 filter_fn: Callable | None) -> None:
+    def __init__(
+        self, name: str, monitor: BaseMonitor, log: SimLog, filter_fn: Callable | None
+    ) -> None:
         self.name = name
         self.monitor = monitor
         self.log = log
@@ -266,7 +264,7 @@ class FunnelChannel(Channel):
         monitor: BaseMonitor,
         log: SimLog,
         filter_fn: Callable | None,
-        ref_queues: list[str]
+        ref_queues: list[str],
     ) -> None:
         super().__init__(name, monitor, log, filter_fn)
         self._q_ref = {x: Queue() for x in ref_queues}
@@ -408,7 +406,7 @@ class Scoreboard:
                 monitor,
                 self.tb.fork_log("channel", monitor.name),
                 filter_fn,
-                queues
+                queues,
             )
         else:
             channel = Channel(
