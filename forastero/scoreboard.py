@@ -92,15 +92,19 @@ class Channel:
     both queues and tested for equivalence. Any mismatches are reported to the
     scoreboard.
 
-    :param name:    Name of this scoreboard channel
-    :param monitor: Handle to the monitor capturing traffic from the DUT
-    :param log:     Handle to the scoreboard log
+    :param name:      Name of this scoreboard channel
+    :param monitor:   Handle to the monitor capturing traffic from the DUT
+    :param log:       Handle to the scoreboard log
+    :param filter_fn: Function to filter or modify captured transactions
     """
 
-    def __init__(self, name: str, monitor: BaseMonitor, log: SimLog) -> None:
+    def __init__(
+        self, name: str, monitor: BaseMonitor, log: SimLog, filter_fn: Callable | None
+    ) -> None:
         self.name = name
         self.monitor = monitor
         self.log = log
+        self.filter_fn = filter_fn
         self._q_mon = Queue()
         self._q_ref = Queue()
         self._lock = Lock()
@@ -109,7 +113,12 @@ class Channel:
 
         def _sample(mon: BaseMonitor, evt: MonitorEvent, obj: BaseTransaction) -> None:
             if mon is self.monitor and evt is MonitorEvent.CAPTURE:
-                self.push_monitor(obj)
+                # If a filter function was provided, apply it
+                if self.filter_fn is not None:
+                    obj = self.filter_fn(mon, evt, obj)
+                # A filter can drop the transaction, so test for None
+                if obj is not None:
+                    self.push_monitor(obj)
 
         self.monitor.subscribe(MonitorEvent.CAPTURE, _sample)
 
@@ -241,12 +250,23 @@ class FunnelChannel(Channel):
     is not strictly defined, often due to the hardware interleaving different
     streams. Reference data can be pushed into one or more named queues and when
     monitor packets arrive any queue head is valid.
+
+    :param name:       Name of this scoreboard channel
+    :param monitor:    Handle to the monitor capturing traffic from the DUT
+    :param log:        Handle to the scoreboard log
+    :param filter_fn:  Function to filter or modify captured transactions
+    :param ref_queues: List of reference queue names
     """
 
     def __init__(
-        self, name: str, monitor: BaseMonitor, log: SimLog, ref_queues: list[str]
+        self,
+        name: str,
+        monitor: BaseMonitor,
+        log: SimLog,
+        filter_fn: Callable | None,
+        ref_queues: list[str],
     ) -> None:
-        super().__init__(name, monitor, log)
+        super().__init__(name, monitor, log, filter_fn)
         self._q_ref = {x: Queue() for x in ref_queues}
 
     @property
@@ -281,11 +301,19 @@ class FunnelChannel(Channel):
         # Peek at the front of all of the queues
         while True:
             next_mon = self._q_mon.peek()
+            any_empty = False
             for queue in self._q_ref.values():
+                any_empty = any_empty or (queue.level == 0)
                 if queue.level > 0 and queue.peek() == next_mon:
                     await self._q_mon.pop()
                     next_ref = await queue.pop()
                     return next_mon, next_ref
+            # If all queues contain objects but none matched, this is a mismatch!
+            # NOTE: This will just pop the final queue in order to report miscompare
+            if not any_empty:
+                await self._q_mon.pop()
+                next_ref = await queue.pop()
+                return next_mon, next_ref
             # Wait for a reference object to be pushed to any queue
             await First(*(x.on_push_event.wait() for x in self._q_ref.values()))
 
@@ -354,24 +382,38 @@ class Scoreboard:
         self.channels: dict[str, Channel] = {}
 
     def attach(
-        self, monitor: BaseMonitor, verbose=False, queues: list[str] | None = None
+        self,
+        monitor: BaseMonitor,
+        verbose=False,
+        filter_fn: Callable | None = None,
+        queues: list[str] | None = None,
     ) -> None:
         """
         Attach a monitor to the scoreboard, creating and scheduling a new
         channel in the process.
 
-        :param monitor: The monitor to attach
-        :param verbose: Whether to tabulate matches as well as mismatches
-        :param queues:  List of reference queue names
+        :param monitor:   The monitor to attach
+        :param verbose:   Whether to tabulate matches as well as mismatches
+        :param queues:    List of reference queue names, this causes a funnel
+                          type scoreboard channel to be used
+        :param filter_fn: A filter function that can either drop or modify items
+                          recorded by the monitor prior to scoreboarding
         """
         assert monitor.name not in self.channels, f"Monitor known for '{monitor.name}'"
         if isinstance(queues, list) and len(queues) > 0:
             channel = FunnelChannel(
-                monitor.name, monitor, self.tb.fork_log("channel", monitor.name), queues
+                monitor.name,
+                monitor,
+                self.tb.fork_log("channel", monitor.name),
+                filter_fn,
+                queues,
             )
         else:
             channel = Channel(
-                monitor.name, monitor, self.tb.fork_log("channel", monitor.name)
+                monitor.name,
+                monitor,
+                self.tb.fork_log("channel", monitor.name),
+                filter_fn,
             )
         self.channels[channel.name] = channel
         if verbose:

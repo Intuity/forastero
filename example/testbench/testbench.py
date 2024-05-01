@@ -17,6 +17,7 @@ from cocotb.handle import HierarchyObject
 from forastero.bench import BaseBench
 from forastero.driver import DriverEvent
 from forastero.io import IORole
+from forastero.monitor import MonitorEvent
 
 from .stream import (
     StreamInitiator,
@@ -57,6 +58,7 @@ class Testbench(BaseBench):
             "x_mon",
             StreamMonitor(self, x_io, self.clk, self.rst),
             scoreboard_queues=["a", "b"],
+            scoreboard_filter=self.filter_x_mon,
         )
         # Register callbacks to the model
         self.a_init.subscribe(DriverEvent.POST_DRIVE, self.model)
@@ -65,9 +67,25 @@ class Testbench(BaseBench):
     def model(
         self, driver: StreamInitiator, event: DriverEvent, obj: StreamTransaction
     ) -> None:
+        """
+        Demonstration model that forwards transactions seen on interfaces A & B
+        and sets bit 32 (to match the filtering behaviour below)
+        """
         assert driver in (self.a_init, self.b_init)
         assert event == DriverEvent.POST_DRIVE
+        exp = StreamTransaction(data=obj.data | (1 << 32))
         if driver is self.a_init:
-            self.scoreboard.channels["x_mon"].push_reference("a", obj)
+            self.scoreboard.channels["x_mon"].push_reference("a", exp)
         else:
-            self.scoreboard.channels["x_mon"].push_reference("b", obj)
+            self.scoreboard.channels["x_mon"].push_reference("b", exp)
+
+    def filter_x_mon(
+        self, monitor: StreamMonitor, event: MonitorEvent, obj: StreamTransaction
+    ) -> StreamTransaction:
+        """
+        Demonstration filter function that modifies the data captured from the
+        X interface by always setting bit 32
+        """
+        assert monitor is self.x_mon
+        assert event is MonitorEvent.CAPTURE
+        return StreamTransaction(data=obj.data | (1 << 32))

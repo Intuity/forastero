@@ -205,6 +205,7 @@ class BaseBench:
         scoreboard: bool = True,
         scoreboard_verbose: bool = False,
         scoreboard_queues: list[str] | None = None,
+        scoreboard_filter: Callable | None = None,
     ) -> Component | Coroutine:
         """
         Register a driver, monitor, or coroutine with the testbench. Drivers and
@@ -220,6 +221,11 @@ class BaseBench:
         :param scoreboard_verbose: Only applies to scoreboarded monitors,
                                    controls whether to log each transaction,
                                    even when they don't mismatch
+        :param scoreboard_queues:  A list of named queues used when a funnel
+                                   type scoreboard channel is required
+        :param scoreboard_filter:  A function that can filter or modify items
+                                   recorded by the monitor before they are passed
+                                   to the scoreboard
         """
         assert isinstance(name, str), f"Name must be a string '{name}'"
         if asyncio.iscoroutine(comp_or_coro):
@@ -234,7 +240,10 @@ class BaseBench:
             comp_or_coro.seed(self.random)
             if scoreboard and isinstance(comp_or_coro, BaseMonitor):
                 self.scoreboard.attach(
-                    comp_or_coro, verbose=scoreboard_verbose, queues=scoreboard_queues
+                    comp_or_coro,
+                    verbose=scoreboard_verbose,
+                    filter_fn=scoreboard_filter,
+                    queues=scoreboard_queues,
                 )
         else:
             raise TypeError(f"Unsupported object: {comp_or_coro}")
