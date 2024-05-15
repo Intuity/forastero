@@ -214,9 +214,12 @@ class Channel:
             await Timer(self.polling_ns, units="ns")
             # Check for object at the front of the monitor queue
             if (
-                (self.timeout_ns is not None) and
-                (self._q_mon.level > 0) and
-                ((age := (get_sim_time(units="ns") - self._q_mon.peek().timestamp)) > self.timeout_ns)
+                (self.timeout_ns is not None)
+                and (self._q_mon.level > 0)
+                and (
+                    (age := (get_sim_time(units="ns") - self._q_mon.peek().timestamp))
+                    > self.timeout_ns
+                )
             ):
                 self.log.error(
                     f"Object at the front of the of the {self.name} monitor "
@@ -314,12 +317,9 @@ class FunnelChannel(Channel):
         timeout_ns: int | None = None,
         polling_ns: int = 100,
     ) -> None:
-        super().__init__(name,
-                         monitor,
-                         log,
-                         filter_fn,
-                         timeout_ns=timeout_ns,
-                         polling_ns=polling_ns)
+        super().__init__(
+            name, monitor, log, filter_fn, timeout_ns=timeout_ns, polling_ns=polling_ns
+        )
         self._q_ref = {x: Queue() for x in ref_queues}
 
     @property
