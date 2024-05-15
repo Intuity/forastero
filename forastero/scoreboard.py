@@ -17,13 +17,18 @@ from typing import Any
 
 import cocotb
 from cocotb.log import SimLog
-from cocotb.triggers import Event, First, Lock, RisingEdge
+from cocotb.triggers import Event, First, Lock, RisingEdge, Timer
+from cocotb.utils import get_sim_time
 
 from .monitor import BaseMonitor, MonitorEvent
 from .transaction import BaseTransaction
 
 
 class QueueEmptyError(Exception):
+    pass
+
+
+class ChannelTimeoutError(AssertionError):
     pass
 
 
@@ -92,19 +97,32 @@ class Channel:
     both queues and tested for equivalence. Any mismatches are reported to the
     scoreboard.
 
-    :param name:      Name of this scoreboard channel
-    :param monitor:   Handle to the monitor capturing traffic from the DUT
-    :param log:       Handle to the scoreboard log
-    :param filter_fn: Function to filter or modify captured transactions
+    :param name:       Name of this scoreboard channel
+    :param monitor:    Handle to the monitor capturing traffic from the DUT
+    :param log:        Handle to the scoreboard log
+    :param filter_fn:  Function to filter or modify captured transactions
+    :param timeout_ns: Optional timeout to allow for a object sat at the front
+                       of the monitor queue to remain unmatched (in nanoseconds,
+                       a value of None disables the timeout mechanism)
+    :param polling_ns: How frequently to poll to check for unmatched items stuck
+                       in the monitor queue in nanoseconds (defaults to 100 ns)
     """
 
     def __init__(
-        self, name: str, monitor: BaseMonitor, log: SimLog, filter_fn: Callable | None
+        self,
+        name: str,
+        monitor: BaseMonitor,
+        log: SimLog,
+        filter_fn: Callable | None,
+        timeout_ns: int | None = None,
+        polling_ns: int = 100,
     ) -> None:
         self.name = name
         self.monitor = monitor
         self.log = log
         self.filter_fn = filter_fn
+        self.timeout_ns = timeout_ns
+        self.polling_ns = polling_ns
         self._q_mon = Queue()
         self._q_ref = Queue()
         self._lock = Lock()
@@ -121,6 +139,7 @@ class Channel:
                     self.push_monitor(obj)
 
         self.monitor.subscribe(MonitorEvent.CAPTURE, _sample)
+        cocotb.start_soon(self._polling())
 
     @property
     def monitor_depth(self) -> int:
@@ -184,6 +203,31 @@ class Channel:
         next_mon = await self._q_mon.pop()
         # Return monitor-reference pair (don't release lock yet)
         return next_mon, next_ref
+
+    async def _polling(self) -> None:
+        """
+        Polling loop that checks for items getting stuck in the channel's
+        monitor queue
+        """
+        while True:
+            # Wait for polling delay
+            await Timer(self.polling_ns, units="ns")
+            # Check for object at the front of the monitor queue
+            if (
+                (self.timeout_ns is not None)
+                and (self._q_mon.level > 0)
+                and (
+                    (age := (get_sim_time(units="ns") - self._q_mon.peek().timestamp))
+                    > self.timeout_ns
+                )
+            ):
+                self.log.error(
+                    f"Object at the front of the of the {self.name} monitor "
+                    f"queue has been stalled for {age} ns which exceeds the "
+                    f"configured timeout of {self.timeout_ns} ns"
+                )
+                self.report()
+                raise ChannelTimeoutError(f"Channel {self.name} timed out")
 
     async def loop(self, mismatch: Callable, match: Callable | None = None) -> None:
         """
@@ -256,6 +300,11 @@ class FunnelChannel(Channel):
     :param log:        Handle to the scoreboard log
     :param filter_fn:  Function to filter or modify captured transactions
     :param ref_queues: List of reference queue names
+    :param timeout_ns: Optional timeout to allow for a object sat at the front
+                       of the monitor queue to remain unmatched (in nanoseconds,
+                       a value of None disables the timeout mechanism)
+    :param polling_ns: How frequently to poll to check for unmatched items stuck
+                       in the monitor queue in nanoseconds (defaults to 100 ns)
     """
 
     def __init__(
@@ -265,8 +314,12 @@ class FunnelChannel(Channel):
         log: SimLog,
         filter_fn: Callable | None,
         ref_queues: list[str],
+        timeout_ns: int | None = None,
+        polling_ns: int = 100,
     ) -> None:
-        super().__init__(name, monitor, log, filter_fn)
+        super().__init__(
+            name, monitor, log, filter_fn, timeout_ns=timeout_ns, polling_ns=polling_ns
+        )
         self._q_ref = {x: Queue() for x in ref_queues}
 
     @property
@@ -387,17 +440,24 @@ class Scoreboard:
         verbose=False,
         filter_fn: Callable | None = None,
         queues: list[str] | None = None,
+        timeout_ns: int | None = None,
+        polling_ns: int = 100,
     ) -> None:
         """
         Attach a monitor to the scoreboard, creating and scheduling a new
         channel in the process.
 
-        :param monitor:   The monitor to attach
-        :param verbose:   Whether to tabulate matches as well as mismatches
-        :param queues:    List of reference queue names, this causes a funnel
-                          type scoreboard channel to be used
-        :param filter_fn: A filter function that can either drop or modify items
-                          recorded by the monitor prior to scoreboarding
+        :param monitor:    The monitor to attach
+        :param verbose:    Whether to tabulate matches as well as mismatches
+        :param queues:     List of reference queue names, this causes a funnel
+                           type scoreboard channel to be used
+        :param filter_fn:  A filter function that can either drop or modify items
+                           recorded by the monitor prior to scoreboarding
+        :param timeout_ns: Optional timeout to allow for a object sat at the front
+                           of the monitor queue to remain unmatched (in nanoseconds,
+                           a value of None disables the timeout mechanism)
+        :param polling_ns: How frequently to poll to check for unmatched items stuck
+                           in the monitor queue in nanoseconds (defaults to 100 ns)
         """
         assert monitor.name not in self.channels, f"Monitor known for '{monitor.name}'"
         if isinstance(queues, list) and len(queues) > 0:
@@ -407,6 +467,8 @@ class Scoreboard:
                 self.tb.fork_log("channel", monitor.name),
                 filter_fn,
                 queues,
+                timeout_ns=timeout_ns,
+                polling_ns=polling_ns,
             )
         else:
             channel = Channel(
@@ -414,6 +476,8 @@ class Scoreboard:
                 monitor,
                 self.tb.fork_log("channel", monitor.name),
                 filter_fn,
+                timeout_ns=timeout_ns,
+                polling_ns=polling_ns,
             )
         self.channels[channel.name] = channel
         if verbose:
