@@ -219,9 +219,10 @@ call.
 
 ### Scoreboard Channel Types
 
-When a monitor is attached onto the scoreboard (i.e. `self.register(...)` is
-called with `scoreboard=True`, which is the default behaviour) it is normally
-registered as a simple channel.
+When `self.register(...)` is called it will register the monitor against the
+scoreboard and queue captured transactions into a dedicated channel (unless
+`scoreboard=False` is set). If no other parameters are provided then the
+scoreboard will create a simpple channel.
 
 A simple channel will expect all transactions submitted to the reference queue
 to appear in the same order in the monitor's queue, and whenever a mismatch is
