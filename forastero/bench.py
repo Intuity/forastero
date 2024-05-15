@@ -206,6 +206,8 @@ class BaseBench:
         scoreboard_verbose: bool = False,
         scoreboard_queues: list[str] | None = None,
         scoreboard_filter: Callable | None = None,
+        scoreboard_timeout_ns: int | None = None,
+        scoreboard_polling_ns: int = 100,
     ) -> Component | Coroutine:
         """
         Register a driver, monitor, or coroutine with the testbench. Drivers and
@@ -214,18 +216,25 @@ class BaseBench:
         the scoreboard unless explicitly requested. Coroutines must also be named
         and are required to complete before the test will shutdown.
 
-        :param name:               Name of the component or coroutine
-        :param comp_or_coro:       Component instance or coroutine
-        :param scoreboard:         Only applies to monitors, controls whether it
-                                   is registered with the scoreboard
-        :param scoreboard_verbose: Only applies to scoreboarded monitors,
-                                   controls whether to log each transaction,
-                                   even when they don't mismatch
-        :param scoreboard_queues:  A list of named queues used when a funnel
-                                   type scoreboard channel is required
-        :param scoreboard_filter:  A function that can filter or modify items
-                                   recorded by the monitor before they are passed
-                                   to the scoreboard
+        :param name:                  Name of the component or coroutine
+        :param comp_or_coro:          Component instance or coroutine
+        :param scoreboard:            Only applies to monitors, controls whether
+                                      it is registered with the scoreboard
+        :param scoreboard_verbose:    Only applies to scoreboarded monitors,
+                                      controls whether to log each transaction,
+                                      even when they don't mismatch
+        :param scoreboard_queues:     A list of named queues used when a funnel
+                                      type scoreboard channel is required
+        :param scoreboard_filter:     A function that can filter or modify items
+                                      recorded by the monitor before they are
+                                      passed to the scoreboard
+        :param scoreboard_timeout_ns: Optional timeout to allow for a object sat
+                                      at the front of the monitor queue to remain
+                                      unmatched (in nanoseconds, a value of None
+                                      disables the timeout mechanism)
+        :param scoreboard_polling_ns: How frequently to poll to check for unmatched
+                                      items stuck in the monitor queue in nanoseconds
+                                      (defaults to 100 ns)
         """
         assert isinstance(name, str), f"Name must be a string '{name}'"
         if asyncio.iscoroutine(comp_or_coro):
@@ -244,6 +253,8 @@ class BaseBench:
                     verbose=scoreboard_verbose,
                     filter_fn=scoreboard_filter,
                     queues=scoreboard_queues,
+                    timeout_ns=scoreboard_timeout_ns,
+                    polling_ns=scoreboard_polling_ns,
                 )
         else:
             raise TypeError(f"Unsupported object: {comp_or_coro}")

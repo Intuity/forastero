@@ -217,6 +217,90 @@ If, for any reason, you do not want a monitor to be attached to the scoreboard
 then you may provide the argument `scoreboard=False` to the `self.register(...)`
 call.
 
+### Scoreboard Channel Types
+
+When a monitor is attached onto the scoreboard (i.e. `self.register(...)` is
+called with `scoreboard=True`, which is the default behaviour) it is normally
+registered as a simple channel.
+
+A simple channel will expect all transactions submitted to the reference queue
+to appear in the same order in the monitor's queue, and whenever a mismatch is
+detected it will flag an error.
+
+```python title="tb/testbench.py"
+from forastero import BaseBench, IORole
+from .stream import StreamIO, StreamMonitor
+
+class Testbench(BaseBench):
+    def __init__(self, dut) -> None:
+        super().__init__(dut, clk=dut.i_clk, rst=dut.i_rst)
+        stream_io = StreamIO(dut, "stream", IORole.INITIATOR)
+        self.register("stream_mon",
+                      StreamMonitor(self, stream_io, self.clk, self.rst))
+
+    def model_stream(self):
+        self.scoreboard.channels["stream_mon"].push_reference(StreamTransaction(...))
+```
+
+Another option is to register the monitor with multiple named scoreboard queues,
+thus creating a "funnel" channel. In this case each named queue of the channel
+must maintain order, but the scoreboard can pop entries from different queus in
+any order - this is great for blackbox verification of components like arbiters
+where the decision on which transaction is going to be taken may be influenced
+by many factors internal to the device.
+
+```python title="tb/testbench.py"
+from forastero import BaseBench, IORole
+from .stream import StreamIO, StreamMonitor
+
+class Testbench(BaseBench):
+    def __init__(self, dut) -> None:
+        super().__init__(dut, clk=dut.i_clk, rst=dut.i_rst)
+        stream_io = StreamIO(dut, "stream", IORole.INITIATOR)
+        self.register("arb_output_mon",
+                      StreamMonitor(self, stream_io, self.clk, self.rst),
+                      scoreboard_queues=["a", "b", "c"])
+
+    def model_arbiter_src_b(self):
+        self.scoreboard.channels["arb_output_mon"].push_reference(
+            "b", StreamTransaction(...)
+        )
+```
+
+### Scoreboard Channel Timeouts
+
+While each registered testcase can provide a timeout, this in many cases may be
+set at a very high time to cope with complex, long running testcases. To provide
+a finer granularity of timeout control, timeouts may be configured specifically
+to scoreboard channels that specify how long it is acceptable for a transaction
+to sit at the front of the monitor's queue before the scoreboard matches it to
+a reference transaction. There are two key parameters to `self.register(...)`:
+
+ * `scoreboard_timeout_ns` - the maximum acceptable age a transaction may be at
+   the front of the monitor's channel. The age is determined by substracting the
+   transaction's `timestamp` field (a default property of `BaseTransaction`)
+   from the current simulation time.
+
+ * `scoreboard_polling_ns` - the frequency with which to check the front of the
+   scoreboard's monitor queue, this defaults to `100 ns`.
+
+Due to the interaction of the polling timeout and polling period, transactions
+may live longer than the timeout in certain cases but this is bounded by a
+maximum delay of one polling interval.
+
+```python title="tb/testbench.py"
+from forastero import BaseBench, IORole
+from .stream import StreamIO, StreamMonitor
+
+class Testbench(BaseBench):
+    def __init__(self, dut) -> None:
+        super().__init__(dut, clk=dut.i_clk, rst=dut.i_rst)
+        stream_io = StreamIO(dut, "stream", IORole.INITIATOR)
+        self.register("stream_mon",
+                      StreamMonitor(self, stream_io, self.clk, self.rst),
+                      scoreboard_timeout_ns=10)
+```
+
 ## Logging
 
 Both `BaseDriver` and `BaseMonitor` inherit from `Component`, and this root class
