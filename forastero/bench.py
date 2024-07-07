@@ -64,6 +64,8 @@ class BaseBench:
         },
         # Enable profiling by providing a path
         "profiling": None,
+        # Enable fast failure
+        "fail_fast": (os.environ.get("FAIL_FAST", "no").lower() == "yes"),
     }
 
     def __init__(
@@ -102,8 +104,7 @@ class BaseBench:
         # NOTE: This should really only be used by internal testbench processes
         self._orch_log = self.fork_log("orchestration")
         # Create a scoreboard
-        fail_fast = os.environ.get("FAIL_FAST", "no").lower() == "yes"
-        self.scoreboard = Scoreboard(tb=self, fail_fast=fail_fast)
+        self.scoreboard = Scoreboard(tb=self, fail_fast=self.get_parameter("fail_fast"))
         # Track components
         self._components = {}
         self._processes = {}

@@ -279,6 +279,10 @@ class SeqProxy(EventEmitter, Generic[C]):
     def rst(self) -> ModifiableObject:
         return self._component.rst
 
+    @property
+    def io(self) -> ModifiableObject:
+        return self._component.io
+
     def idle(self) -> None:
         """Forward idle through to the wrapped component"""
         return self._component.idle()
