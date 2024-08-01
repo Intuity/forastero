@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Callable
+
 from cocotb.handle import HierarchyObject
 
 from forastero import BaseIO
@@ -19,5 +21,18 @@ from forastero.io import IORole
 
 
 class StreamIO(BaseIO):
-    def __init__(self, dut: HierarchyObject, name: str, role: IORole) -> None:
-        super().__init__(dut, name, role, ["data", "valid"], ["ready"])
+    def __init__(
+        self,
+        dut: HierarchyObject,
+        name: str | None,
+        role: IORole,
+        io_style: Callable[[str | None, str, IORole, IORole], str] | None = None,
+    ) -> None:
+        super().__init__(
+            dut=dut,
+            name=name,
+            role=role,
+            init_sigs=["data", "valid"],
+            resp_sigs=["ready"],
+            io_style=io_style
+        )

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from enum import IntEnum
-from typing import Any
+from typing import Any, Callable
 
 from cocotb.handle import HierarchyObject, NonHierarchyObject
 from cocotb.log import SimLog
@@ -88,74 +88,118 @@ class SignalWrapper:
         return self._width
 
 
+def io_prefix_style(bus: str | None, component: str, role_bus: IORole, role_comp: IORole) -> str:
+    """
+    Style signal names as i/o_(<BUS>_)<COMPONENT> for example i_dma_awaddr and
+    o_dma_awready.
+
+    :param bus:       Name of the bus instance or None if not required
+    :param component: Name of component signal withim the bus
+    :param role_bus:  Interface role of the entire bus instance
+    :param role_comp: Interface role of the component within the bus
+    :returns:         Complete string name
+    """
+    mapping = {
+        (IORole.INITIATOR, IORole.INITIATOR): "o",
+        (IORole.INITIATOR, IORole.RESPONDER): "i",
+        (IORole.RESPONDER, IORole.INITIATOR): "i",
+        (IORole.RESPONDER, IORole.RESPONDER): "o",
+    }
+    full_name = f"{mapping[role_bus, role_comp]}"
+    if bus is not None:
+        full_name += f"_{bus}"
+    return f"{full_name}_{component}"
+
+
+def io_suffix_style(bus: str | None, component: str, bus_role: IORole, comp_role: IORole) -> str:
+    """
+    Style signal names as (<BUS>_)<COMPONENT>_i/o for example dma_awaddr_i and
+    dma_awready_o.
+
+    :param bus:       Name of the bus instance or None if not required
+    :param component: Name of component signal withim the bus
+    :param role_bus:  Interface role of the entire bus instance
+    :param role_comp: Interface role of the component within the bus
+    :returns:         Complete string name
+    """
+    mapping = {
+        (IORole.INITIATOR, IORole.INITIATOR): "o",
+        (IORole.INITIATOR, IORole.RESPONDER): "i",
+        (IORole.RESPONDER, IORole.INITIATOR): "i",
+        (IORole.RESPONDER, IORole.RESPONDER): "o",
+    }
+    full_name = f"{bus}_" if bus is not None else ""
+    return f"{full_name}{component}_{mapping[bus_role, comp_role]}"
+
+
 class BaseIO:
     """
     Wraps a collection of different signals into a single interface that can be
     used by drivers and monitors to interact with the design.
 
-    :param dut      : Pointer to the DUT boundary
-    :param name     : Name of the signal - acts as a prefix
-    :param role     : Role of this signal on the DUT boundary
+    :param dut:       Pointer to the DUT boundary
+    :param name:      Name of the signal - acts as a prefix
+    :param role:      Role of this signal on the DUT boundary
     :param init_sigs: Signals driven by the initiator
     :param resp_sigs: Signals driven by the responder
+    :param io_style:  Optionally override the default I/O naming style
     """
+
+    DEFAULT_IO_STYLE : Callable[[str | None, str, IORole, IORole], str] = io_prefix_style
 
     def __init__(
         self,
         dut: HierarchyObject,
-        name: str,
+        name: str | None,
         role: IORole,
         init_sigs: list[str],
         resp_sigs: list[str],
+        io_style: Callable[[str | None, str, IORole, IORole], str] | None = None,
     ) -> None:
         # Sanity checks
         assert role in IORole, f"Role {role} is not recognised"
         assert isinstance(init_sigs, list), "Initiator signals are not a list"
         assert isinstance(resp_sigs, list), "Responder signals are not a list"
         # Hold onto attributes
-        self.__dut = dut
-        self.__name = name
-        self.__role = role
-        self.__init_sigs = init_sigs[:]
-        self.__resp_sigs = resp_sigs[:]
-        self.__defaults = {}
+        self._dut = dut
+        self._name = name
+        self._role = role
+        self._init_sigs = init_sigs[:]
+        self._resp_sigs = resp_sigs[:]
+        self._defaults = {}
+        # If no IO style provided, adopt the default
+        io_style = io_style or BaseIO.DEFAULT_IO_STYLE
         # Pickup all initiator and response signals wrapping each inside a
         # SignalWrapper to normalise its behaviour across simulators
         self.__initiators, self.__responders = {}, {}
-        for comp in self.__init_sigs:
-            sig = "o" if self.__role == IORole.INITIATOR else "i"
-            if self.__name is not None:
-                sig += f"_{self.__name}"
-            sig += f"_{comp}"
-            if not hasattr(self.__dut, sig):
+        for comp in self._init_sigs:
+            sig = io_style(self._name, comp, self._role, IORole.INITIATOR)
+            if not hasattr(self._dut, sig):
                 SimLog("tb").getChild(f"io.{type(self).__name__.lower()}").info(
                     f"{type(self).__name__}: Did not find I/O component {sig} on {dut}"
                 )
                 continue
-            sig_ptr = SignalWrapper(getattr(self.__dut, sig))
+            sig_ptr = SignalWrapper(getattr(self._dut, sig))
             self.__initiators[comp] = sig_ptr
             setattr(self, comp, sig_ptr)
-        for comp in self.__resp_sigs:
-            sig = "i" if self.__role == IORole.INITIATOR else "o"
-            if self.__name is not None:
-                sig += f"_{self.__name}"
-            sig += f"_{comp}"
-            if not hasattr(self.__dut, sig):
+        for comp in self._resp_sigs:
+            sig = io_style(name, comp, self._role, IORole.RESPONDER)
+            if not hasattr(self._dut, sig):
                 SimLog("tb").getChild(f"io.{type(self).__name__.lower()}").info(
                     f"{type(self).__name__}: Did not find I/O component {sig} on {dut}"
                 )
                 continue
-            sig_ptr = SignalWrapper(getattr(self.__dut, sig))
+            sig_ptr = SignalWrapper(getattr(self._dut, sig))
             self.__responders[comp] = sig_ptr
             setattr(self, comp, sig_ptr)
 
     @property
     def role(self) -> IORole:
-        return self.__role
+        return self._role
 
     @property
     def dut(self) -> HierarchyObject:
-        return self.__dut
+        return self._dut
 
     def initialise(self, role: IORole) -> None:
         """Initialise signals according to the active role"""
@@ -171,7 +215,7 @@ class BaseIO:
         :param comp:  Component name
         :param value: Value to return
         """
-        self.__defaults[comp] = value
+        self._defaults[comp] = value
 
     def has(self, comp: str) -> bool:
         """
@@ -192,7 +236,7 @@ class BaseIO:
         """
         item = getattr(self, comp, None)
         if item is None:
-            return self.__defaults.get(comp, None) if default is None else default
+            return self._defaults.get(comp, None) if default is None else default
         else:
             raw = int(item.value)
             return (raw == 1) if len(item) == 1 else raw
