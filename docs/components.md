@@ -168,10 +168,11 @@ class Testbench(BaseBench):
 
 !!! note
 
-    Two I/O styles are provided with Forastero, the first (and default) is
+    Three I/O styles are provided with Forastero, the first (and default) is
     `io_prefix_style` where signals are named `i/o_<BUS>_<COMPONENT>` but there
-    is also `io_suffix_style` where the `i/o` is moved to the end of the signal
-    name `<BUS>_<COMPONENT>_i/o`.
+    is also `io_suffix_style`, where the `i/o` is moved to the end of the signal
+    name `<BUS>_<COMPONENT>_i/o`, and `io_plain_style` where there is no `i/o`
+    prefix or suffix and signals are simply named `<BUS>_<COMPONENT>`.
 
 ## Transactions
 
