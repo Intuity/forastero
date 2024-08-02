@@ -14,10 +14,10 @@
 
 from .bench import BaseBench
 from .driver import BaseDriver, DriverEvent
-from .io import BaseIO, IORole
+from .io import BaseIO, IORole, io_prefix_style, io_plain_style, io_suffix_style
 from .monitor import BaseMonitor, MonitorEvent
 from .scoreboard import Scoreboard
-from .sequence import randarg, requires, sequence
+from .sequence import SeqContext, SeqLock, SeqProxy, randarg, requires, sequence
 from .transaction import BaseTransaction
 
 assert all(
@@ -31,6 +31,12 @@ assert all(
         DriverEvent,
         MonitorEvent,
         Scoreboard,
+        SeqContext,
+        SeqLock,
+        SeqProxy,
+        io_prefix_style,
+        io_plain_style,
+        io_suffix_style,
         randarg,
         requires,
         sequence,
