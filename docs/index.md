@@ -54,17 +54,22 @@ Highlighting a few interesting snippets:
    a driver and registers it with the testbench using the name 'stream_init',
    the `StreamIO` object, clock, and reset are passed into the driver.
 
-Forastero has some assumptions of how your design looks, specifically around
-how signals are named. It assumes the following naming convention:
+In the example above, Forastero has made some assumptions about how signals have
+been named - specifically:
 
  * Ports are prefixed according to their direction with inputs prefixed by `i_`
    and outputs by `o_`;
- * Port names then have a common section depending on their purpose, for example
-   all signal relating to the `stream` interface start with either `i_stream_`
-   or `o_stream_`;
- * Finally the port name ends with its purpose, for example `i_stream_data`.
+ * Port names then have a common section that details their "bus" name, for
+   example all signal relating to the `stream` interface start with either
+   `i_stream_...` or `o_stream_...`;
+ * Finally the port name ends with its component, for example `i_stream_data`.
 
-Such a design would look like:
+If your design names signals in a different way, then you can use a
+[custom naming style](./components.md#io-naming-style) to override globally or on a
+case-by-case basis.
+
+If you were to use the default `io_prefix_style`, then your design would need to
+look like this...
 
 ```verilog
 module arbiter (
@@ -80,11 +85,6 @@ module arbiter (
 
 endmodule : arbiter
 ```
-
-This style is evidently opinionated, but not without reason as it makes it clear
-the exact purpose and direction of any signal within a line without having to
-cross-reference the port declaration. If it is not to your taste, the code for
-the `BaseIO` object is easily extensible.
 
 ### Writing Testcases
 

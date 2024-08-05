@@ -7,6 +7,7 @@ theme:
     scheme: slate
     primary: teal
 plugins:
+  - search
   - mkdocstrings:
       handlers:
         python:
@@ -26,7 +27,7 @@ markdown_extensions:
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.emoji:
-      emoji_index: !!python/name:materialx.emoji.twemoji
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:materialx.emoji.to_svg
 nav:
   - Welcome: "index.md"
