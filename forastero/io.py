@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import Callable
 from enum import IntEnum
-from typing import Any, Callable
+from typing import Any
 
 from cocotb.handle import HierarchyObject, NonHierarchyObject
 from cocotb.log import SimLog
@@ -88,7 +89,9 @@ class SignalWrapper:
         return self._width
 
 
-def io_prefix_style(bus: str | None, component: str, role_bus: IORole, role_comp: IORole) -> str:
+def io_prefix_style(
+    bus: str | None, component: str, role_bus: IORole, role_comp: IORole
+) -> str:
     """
     Style signal names as i/o_(<BUS>_)<COMPONENT> for example i_dma_awaddr and
     o_dma_awready.
@@ -111,7 +114,9 @@ def io_prefix_style(bus: str | None, component: str, role_bus: IORole, role_comp
     return f"{full_name}_{component}"
 
 
-def io_suffix_style(bus: str | None, component: str, role_bus: IORole, role_comp: IORole) -> str:
+def io_suffix_style(
+    bus: str | None, component: str, role_bus: IORole, role_comp: IORole
+) -> str:
     """
     Style signal names as (<BUS>_)<COMPONENT>_i/o for example dma_awaddr_i and
     dma_awready_o.
@@ -132,7 +137,9 @@ def io_suffix_style(bus: str | None, component: str, role_bus: IORole, role_comp
     return f"{full_name}{component}_{mapping[role_bus, role_comp]}"
 
 
-def io_plain_style(bus: str | None, component: str, role_bus: IORole, role_comp: IORole) -> str:
+def io_plain_style(
+    bus: str | None, component: str, role_bus: IORole, role_comp: IORole
+) -> str:
     """
     Style signal names as (<BUS>_)<COMPONENT> for example dma_awaddr and
     dma_awready.
@@ -164,7 +171,7 @@ class BaseIO:
     :param io_style:  Optionally override the default I/O naming style
     """
 
-    DEFAULT_IO_STYLE : Callable[[str | None, str, IORole, IORole], str] = io_prefix_style
+    DEFAULT_IO_STYLE: Callable[[str | None, str, IORole, IORole], str] = io_prefix_style
 
     def __init__(
         self,
