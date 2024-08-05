@@ -111,7 +111,7 @@ def io_prefix_style(bus: str | None, component: str, role_bus: IORole, role_comp
     return f"{full_name}_{component}"
 
 
-def io_suffix_style(bus: str | None, component: str, bus_role: IORole, comp_role: IORole) -> str:
+def io_suffix_style(bus: str | None, component: str, role_bus: IORole, role_comp: IORole) -> str:
     """
     Style signal names as (<BUS>_)<COMPONENT>_i/o for example dma_awaddr_i and
     dma_awready_o.
@@ -129,10 +129,10 @@ def io_suffix_style(bus: str | None, component: str, bus_role: IORole, comp_role
         (IORole.RESPONDER, IORole.RESPONDER): "o",
     }
     full_name = f"{bus}_" if bus is not None else ""
-    return f"{full_name}{component}_{mapping[bus_role, comp_role]}"
+    return f"{full_name}{component}_{mapping[role_bus, role_comp]}"
 
 
-def io_plain_style(bus: str | None, component: str, bus_role: IORole, comp_role: IORole) -> str:
+def io_plain_style(bus: str | None, component: str, role_bus: IORole, role_comp: IORole) -> str:
     """
     Style signal names as (<BUS>_)<COMPONENT> for example dma_awaddr and
     dma_awready.
@@ -143,8 +143,8 @@ def io_plain_style(bus: str | None, component: str, bus_role: IORole, comp_role:
     :param role_comp: Interface role of the component within the bus
     :returns:         Complete string name
     """
-    del bus_role
-    del comp_role
+    del role_bus
+    del role_comp
     if bus is None:
         return component
     else:
