@@ -1,6 +1,6 @@
 # Testcases
 
-### Writing Testcases
+## Writing Testcases
 
 cocotb provides the `@cocotb.test()` decorator to distinguish a Python function
 as a test, Forastero replaces this with a decorator defined by the testbench
