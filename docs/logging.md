@@ -20,6 +20,7 @@ Forastero provides the following levels of hierarchy:
  * `tb.io.<X>` - used for messages emitted from a particular I/O wrapper class
    (when extending from [BaseIO](./classes/io.md));
  * `tb.testcase.<X>` - used for messages emitted from a particular testcase;
+ * `tb.arbiter` - used for messages emitted from the sequencing arbiter;
  * `tb.sequence.<X>` - used for messages emitted from a specific sequence.
 
 These logging contexts are created using the `fork_log` method of

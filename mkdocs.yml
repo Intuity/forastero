@@ -34,6 +34,7 @@ nav:
   - Components: "components.md"
   - Logging: "logging.md"
   - Sequences: "sequences.md"
+  - Testcases: "testcases.md"
   - API Reference:
     - IO: "classes/io.md"
     - Transactions: "classes/transaction.md"

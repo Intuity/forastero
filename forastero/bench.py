@@ -381,6 +381,9 @@ class BaseBench:
                         )
                         dut._log.error(traceback.format_exc())
                         raise e
+                    # Log what's going on
+                    tc_name = self._func.__name__
+                    tb._orch_log.info(f"Preparing testcase {tc_name}")
                     # Check all components have been registered
                     missing = 0
                     for comp in Component.COMPONENTS:
@@ -420,14 +423,20 @@ class BaseBench:
                     for comp in tb._components.values():
                         await comp.ready()
 
+                    # Create a forked log
+                    log = tb.fork_log("testcase", tc_name)
+
                     # Are there any parameters for this test?
                     params = {}
                     for key in cls.TEST_REQ_PARAMS[self._func]:
-                        if (value := cls.get_parameter(key)) is not None:
+                        # First look for "<TESTCASE_NAME>.<PARAMETER_NAME>"
+                        if (value := cls.get_parameter(f"{tc_name}.{key}")) is not None:
+                            log.info(f"Parameter {key}={value}")
                             params[key] = value
-
-                    # Create a forked log
-                    log = tb.fork_log("testcase", self._func.__name__)
+                        # Fall back to just the parameter name
+                        elif (value := cls.get_parameter(key)) is not None:
+                            log.info(f"Parameter {key}={value}")
+                            params[key] = value
 
                     # Declare an intermediate function (this allows us to wrap
                     # with a optional timeout)

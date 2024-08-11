@@ -19,7 +19,7 @@ from forastero.driver import DriverEvent
 from forastero.io import IORole
 from forastero.monitor import MonitorEvent
 
-from .stream import (
+from common.io.stream import (
     StreamInitiator,
     StreamIO,
     StreamMonitor,

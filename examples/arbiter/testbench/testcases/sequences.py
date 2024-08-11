@@ -16,27 +16,15 @@
 from cocotb.log import SimLog
 
 import forastero
-from forastero.driver import DriverEvent
 from forastero.sequence import SeqContext
 
-from ..stream import (
-    StreamBackpressure,
+from common.io.stream import (
     StreamInitiator,
-    StreamResponder,
     StreamTransaction,
+    stream_backpressure_seq,
+    stream_traffic_seq,
 )
 from ..testbench import Testbench
-
-
-@forastero.sequence()
-@forastero.requires("stream", StreamInitiator)
-@forastero.randarg("length", range=(100, 1000))
-async def random_traffic(ctx: SeqContext, stream: StreamInitiator, length: int):
-    """Generates random traffic"""
-    ctx.log.info(f"Generating {length} random transactions")
-    for _ in range(length):
-        async with ctx.lock(stream):
-            stream.enqueue(StreamTransaction(data=ctx.random.getrandbits(32)))
 
 
 @forastero.sequence(auto_lock=True)
@@ -49,7 +37,12 @@ async def burst_on_a_only(
     stream_b: StreamInitiator,
     length: int,
 ):
-    """Generates a burst only on one channel"""
+    """
+    Generates a burst only on one channel while locking the other channel to
+    ensure it is idle.
+
+    :param length: How long the burst of packets should be
+    """
     await stream_a.idle()
     await stream_b.idle()
     ctx.log.info(f"Driving burst of {length} packets on stream A")
@@ -58,57 +51,53 @@ async def burst_on_a_only(
     await stream_a.idle()
 
 
-@forastero.sequence()
-@forastero.requires("stream", StreamResponder)
-@forastero.randarg("min_interval", range=(1, 10))
-@forastero.randarg("max_interval", range=(10, 20))
-@forastero.randarg("backpressure", range=(0, 0.9))
-async def random_backpressure(
-    ctx: SeqContext,
-    stream: StreamResponder,
-    min_interval: int,
-    max_interval: int,
-    backpressure: float,
-):
-    """
-    Generate random backpressure using the READY signal of a stream interface,
-    with options to tune how often backpressure is applied.
-
-    :param min_interval: Shortest time to hold ready constant
-    :param max_interval: Longest time to hold ready constant
-    :param backpressure: Weighting proportion for how often ready should be low,
-                         i.e. values approaching 1 mean always backpressure,
-                         while values approaching 0 mean never backpressure
-    """
-    ctx.log.info("Generating random stream backpressure")
-    async with ctx.lock(stream):
-        while True:
-            await stream.enqueue(
-                StreamBackpressure(
-                    ready=ctx.random.choices(
-                        (True, False),
-                        weights=(1.0 - backpressure, backpressure),
-                        k=1,
-                    )[0],
-                    cycles=ctx.random.randint(min_interval, max_interval),
-                ),
-                DriverEvent.PRE_DRIVE,
-            ).wait()
-
-
 @Testbench.testcase(timeout=100000)
-async def random_seq(tb: Testbench, log: SimLog) -> None:
-    tb.schedule(random_traffic(stream=tb.a_init, length=2000))
-    tb.schedule(random_traffic(stream=tb.b_init, length=2000))
-    for _ in range(10):
+@Testbench.parameter("single_pkts")
+@Testbench.parameter("burst_count")
+@Testbench.parameter("burst_min")
+@Testbench.parameter("burst_max")
+async def random_seq(tb: Testbench,
+                     log: SimLog,
+                     single_pkts: int=2000,
+                     burst_count: int=10,
+                     burst_min: int=100,
+                     burst_max: int=500) -> None:
+    """
+    Stimulate the DUT with random traffic generated through Forastero sequences,
+    which are automatically schedule by the testbench.
+
+    :param single_pkts: Number of single packets to drive on interfaces A & B
+    :param burst_count: Number of bursts to send on interfaces A & B
+    :param burst_min:   Minimum length of each burst
+    :param burst_max:   Maximum length of each burst
+    """
+    # Schedule single packets on upstream interfaces A & B independently
+    log.info(f"Scheduling {single_pkts} single packets on A & B")
+    tb.schedule(stream_traffic_seq(stream=tb.a_init, length=single_pkts))
+    tb.schedule(stream_traffic_seq(stream=tb.b_init, length=single_pkts))
+    # Schedule isolated bursts of packets on upstream interfaces A & B
+    log.info(
+        f"Scheduling {burst_count} bursts between {burst_min} and {burst_max} "
+        f"packets in length"
+    )
+    for _ in range(burst_count):
         tb.schedule(
             burst_on_a_only(
-                stream_a=tb.a_init, stream_b=tb.b_init, length_range=(100, 500)
+                stream_a=tb.a_init,
+                stream_b=tb.b_init,
+                length_range=(burst_min, burst_max),
             )
         )
         tb.schedule(
             burst_on_a_only(
-                stream_a=tb.b_init, stream_b=tb.a_init, length_range=(100, 500)
+                stream_a=tb.b_init,
+                stream_b=tb.a_init,
+                length_range=(burst_min, burst_max),
             )
         )
-    tb.schedule(random_backpressure(stream=tb.x_resp), blocking=False)
+    # Schedule backpressure on the downstream interface
+    # NOTE: This sequence continuously generates updates to the READY signal and
+    #       will never complete. We don't want it to block test completion, so
+    #       it is marked as `blocking=False`
+    log.info("Scheduling downstream backpressure")
+    tb.schedule(stream_backpressure_seq(stream=tb.x_resp), blocking=False)

@@ -92,10 +92,17 @@ class SeqLock:
         yield from cls._COMPONENT_LOCKS.values()
         yield from cls._NAMED_LOCKS.values()
 
+    @classmethod
+    def count_all_locks(cls) -> Iterable[Self]:
+        """Return the total number of locks"""
+        return len(cls._COMPONENT_LOCKS) + len(cls._NAMED_LOCKS)
+
     @property
     def locked(self) -> bool:
         """Check if the lock is currently taken"""
-        return self._lock.locked
+        # NOTE: Prior to 1.8.0 of cocotb 'locked' was an attribute, now it is
+        #       a function that must be called
+        return self._lock.locked() if callable(self._lock.locked) else self._lock.locked
 
     async def acquire(self, context: "SeqContext") -> None:
         """
@@ -336,7 +343,7 @@ class SeqArbiter:
             # Wait until something is queued up
             await self._evt_queue.wait()
             # Log scheduling is starting
-            log.debug(f"Starting scheduling pass {idx}")
+            log.debug(f"Starting scheduling pass {idx} with {SeqLock.count_all_locks()} locks")
             # While stuff is queued, attempt to schedule it
             while self._queue:
                 # Keep track of which locks are available

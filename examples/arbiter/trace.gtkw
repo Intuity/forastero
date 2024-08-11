@@ -1,0 +1,42 @@
+[*]
+[*] GTKWave Analyzer v3.4.0 (w)1999-2022 BSI
+[*] Sun Aug 11 13:04:00 2024
+[*]
+[dumpfile] "dump.vcd"
+[dumpfile_mtime] "Sun Aug 11 13:02:21 2024"
+[dumpfile_size] 2579317
+[savefile] "/Volumes/Development/forastero/examples/arbiter/trace.gtkw"
+[timestart] 0
+[size] 1296 600
+[pos] 494 313
+*-24.439865 -1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+[sst_width] 253
+[signals_width] 144
+[sst_expanded] 1
+[sst_vpaned_height] 159
+@28
+arbiter.i_clk
+arbiter.i_rst
+@200
+-
+@22
+arbiter.i_a_data[31:0]
+@28
+arbiter.i_a_valid
+arbiter.o_a_ready
+@200
+-
+@22
+arbiter.i_b_data[31:0]
+@28
+arbiter.i_b_valid
+arbiter.o_b_ready
+@201
+-
+@22
+arbiter.o_x_data[31:0]
+@28
+arbiter.o_x_valid
+arbiter.i_x_ready
+[pattern_trace] 1
+[pattern_trace] 0

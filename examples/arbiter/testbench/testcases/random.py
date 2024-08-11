@@ -17,7 +17,7 @@ from cocotb.triggers import ClockCycles
 
 from forastero import DriverEvent
 
-from ..stream import StreamBackpressure, StreamTransaction
+from common.io.stream import StreamBackpressure, StreamTransaction
 from ..testbench import Testbench
 
 
