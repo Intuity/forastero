@@ -33,6 +33,7 @@ nav:
   - Welcome: "index.md"
   - Components: "components.md"
   - Logging: "logging.md"
+  - Parameters: "parameters.md"
   - Sequences: "sequences.md"
   - Testcases: "testcases.md"
   - API Reference:

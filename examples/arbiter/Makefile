@@ -39,7 +39,7 @@ ACCUM_PY_PATH += $(abspath $(THIS_DIR)/..)
 export PYTHONPATH := $(subst $(SPACE),:,$(ACCUM_PY_PATH))
 
 # Parameters file
-export TEST_PARAMS := $(THIS_DIR)/params.json
+export TEST_PARAMS ?= $(THIS_DIR)/params.json
 
 # include cocotb's make rules to take care of the simulator setup
 include $(shell cocotb-config --makefiles)/Makefile.sim
