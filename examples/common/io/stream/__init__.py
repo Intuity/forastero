@@ -19,13 +19,15 @@ from .responder import StreamResponder
 from .sequences import stream_backpressure_seq, stream_traffic_seq
 from .transaction import StreamBackpressure, StreamTransaction
 
-assert all((
-    StreamInitiator,
-    StreamIO,
-    StreamMonitor,
-    StreamResponder,
-    StreamBackpressure,
-    StreamTransaction,
-    stream_backpressure_seq,
-    stream_traffic_seq,
-))
+assert all(
+    (
+        StreamInitiator,
+        StreamIO,
+        StreamMonitor,
+        StreamResponder,
+        StreamBackpressure,
+        StreamTransaction,
+        stream_backpressure_seq,
+        stream_traffic_seq,
+    )
+)

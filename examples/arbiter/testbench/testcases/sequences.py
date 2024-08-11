@@ -14,16 +14,16 @@
 
 
 from cocotb.log import SimLog
-
-import forastero
-from forastero.sequence import SeqContext
-
 from common.io.stream import (
     StreamInitiator,
     StreamTransaction,
     stream_backpressure_seq,
     stream_traffic_seq,
 )
+
+import forastero
+from forastero.sequence import SeqContext
+
 from ..testbench import Testbench
 
 
@@ -56,12 +56,14 @@ async def burst_on_a_only(
 @Testbench.parameter("burst_count")
 @Testbench.parameter("burst_min")
 @Testbench.parameter("burst_max")
-async def random_seq(tb: Testbench,
-                     log: SimLog,
-                     single_pkts: int=2000,
-                     burst_count: int=10,
-                     burst_min: int=100,
-                     burst_max: int=500) -> None:
+async def random_seq(
+    tb: Testbench,
+    log: SimLog,
+    single_pkts: int = 2000,
+    burst_count: int = 10,
+    burst_min: int = 100,
+    burst_max: int = 500,
+) -> None:
     """
     Stimulate the DUT with random traffic generated through Forastero sequences,
     which are automatically schedule by the testbench.

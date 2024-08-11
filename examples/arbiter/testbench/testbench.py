@@ -13,12 +13,6 @@
 # limitations under the License.
 
 from cocotb.handle import HierarchyObject
-
-from forastero.bench import BaseBench
-from forastero.driver import DriverEvent
-from forastero.io import IORole
-from forastero.monitor import MonitorEvent
-
 from common.io.stream import (
     StreamInitiator,
     StreamIO,
@@ -26,6 +20,11 @@ from common.io.stream import (
     StreamResponder,
     StreamTransaction,
 )
+
+from forastero.bench import BaseBench
+from forastero.driver import DriverEvent
+from forastero.io import IORole
+from forastero.monitor import MonitorEvent
 
 
 class Testbench(BaseBench):

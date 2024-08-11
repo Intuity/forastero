@@ -343,7 +343,9 @@ class SeqArbiter:
             # Wait until something is queued up
             await self._evt_queue.wait()
             # Log scheduling is starting
-            log.debug(f"Starting scheduling pass {idx} with {SeqLock.count_all_locks()} locks")
+            log.debug(
+                f"Starting scheduling pass {idx} with {SeqLock.count_all_locks()} locks"
+            )
             # While stuff is queued, attempt to schedule it
             while self._queue:
                 # Keep track of which locks are available

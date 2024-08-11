@@ -14,10 +14,10 @@
 
 from cocotb.log import SimLog
 from cocotb.triggers import ClockCycles
+from common.io.stream import StreamBackpressure, StreamTransaction
 
 from forastero import DriverEvent
 
-from common.io.stream import StreamBackpressure, StreamTransaction
 from ..testbench import Testbench
 
 
