@@ -77,9 +77,11 @@ the name - for example:
 
 ```json
 {
-    "inject_packets.num_packets": 250,
-    "other_testcase.num_packets": 95,
-    "packet_min_len": 5
+    "testcases": {
+        "inject_packets.num_packets": 250,
+        "other_testcase.num_packets": 95,
+        "packet_min_len": 5
+    }
 }
 ```
 

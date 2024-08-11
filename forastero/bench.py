@@ -66,6 +66,8 @@ class BaseBench:
         "profiling": None,
         # Enable fast failure
         "fail_fast": (os.environ.get("FAIL_FAST", "no").lower() == "yes"),
+        # Testcase parameters
+        "testcases": {},
     }
 
     def __init__(
@@ -427,15 +429,18 @@ class BaseBench:
                     log = tb.fork_log("testcase", tc_name)
 
                     # Are there any parameters for this test?
+                    raw_tc_params = cls.get_parameter("testcases")
                     params = {}
                     for key in cls.TEST_REQ_PARAMS[self._func]:
                         # First look for "<TESTCASE_NAME>.<PARAMETER_NAME>"
-                        if (value := cls.get_parameter(f"{tc_name}.{key}")) is not None:
-                            log.info(f"Parameter {key}={value}")
+                        if (
+                            value := raw_tc_params.get(f"{tc_name}.{key}", None)
+                        ) is not None:
+                            log.debug(f"Parameter {key}={value}")
                             params[key] = value
                         # Fall back to just the parameter name
-                        elif (value := cls.get_parameter(key)) is not None:
-                            log.info(f"Parameter {key}={value}")
+                        elif (value := raw_tc_params.get(key, None)) is not None:
+                            log.debug(f"Parameter {key}={value}")
                             params[key] = value
 
                     # Declare an intermediate function (this allows us to wrap
