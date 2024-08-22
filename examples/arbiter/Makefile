@@ -15,6 +15,9 @@
 # Get this directory
 THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
+# Utilities
+SPACE := $(SPACE) $(SPACE)
+
 # Simulator options
 SIM           ?= icarus
 TOPLEVEL_LANG ?= verilog
@@ -25,15 +28,18 @@ COMPILE_ARGS  += $(addprefix -D ,$(DEFINES))
 # Design sources
 VERILOG_SOURCES += $(abspath arbiter.sv)
 
-# Design top-level
+# Design top-level and testbench module
 TOPLEVEL = arbiter
+MODULE   = testbench
 
-# Testbench module
-export PYTHONPATH := $(PYTHONPATH):$(THIS_DIR)
-MODULE = testbench
+# Setup the Python path
+ACCUM_PY_PATH += $(PYTHONPATH)
+ACCUM_PY_PATH += $(THIS_DIR)
+ACCUM_PY_PATH += $(abspath $(THIS_DIR)/..)
+export PYTHONPATH := $(subst $(SPACE),:,$(ACCUM_PY_PATH))
 
 # Parameters file
-export TEST_PARAMS := $(THIS_DIR)/params.json
+export TEST_PARAMS ?= $(THIS_DIR)/params.json
 
 # include cocotb's make rules to take care of the simulator setup
 include $(shell cocotb-config --makefiles)/Makefile.sim

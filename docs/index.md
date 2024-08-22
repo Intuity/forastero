@@ -86,40 +86,6 @@ module arbiter (
 endmodule : arbiter
 ```
 
-### Writing Testcases
-
-cocotb provides the `@cocotb.test()` decorator to distinguish a Python function
-as a test, Forastero replaces this with a decorator defined by the testbench
-class. For example:
-
-```python
-from cocotb.log import SimLog
-
-from ..testbench import Testbench
-
-@Testbench.testcase()
-async def smoke(tb : Testbench, log: SimLog):
-    ...
-```
-
-As shown above, `@cocotb.test()` is replaced by `@Testbench.testcase()` - this
-performs all the same functions but replaces the `dut` argument that cocotb
-normally provides with a pointer to an instance of `Testbench` instead and
-provides a second argument called `log`. This decorator does provide some new
-arguments:
-
- * `reset` - defaults to `True`, but if set to `False` it will skip the standard
-   reset and initialisation preamble of the testbench and immediately start the
-   test;
- * `timeout` - sets the maximum number of clock ticks that the testcase can run
-   for before the testbench assumes it is a failure and stops it, this defaults
-   to `10000`.
- * `shutdown_loops` - overrides the number of loops performed at the end of
-   simulation to determine if all monitors, drivers, and scoreboards have
-   drained, this defaults to `2`;
- * `shutdown_delay` - overrides the delay between loops of the shutdown sequence,
-   this defaults to `100` clock ticks.
-
 ## Why the name Forastero?
 
 Forastero is the most commonly grown variety of cacao tree, providing a large
