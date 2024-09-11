@@ -5,10 +5,12 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry]
 name = "forastero"
 version = "1.0"
-description = "Framework for using cocotb"
+description = "cocotb verification framework with the batteries included"
 authors = ["Peter Birch <peter@lightlogic.co.uk>"]
 license = "Apache-2.0"
 readme = "README.md"
+documentation = "http://forastero.intuity.io"
+keywords = ["cocotb", "verification", "verilog", "systemverilog"]
 
 [tool.poetry.dependencies]
 python = "^3.11"
