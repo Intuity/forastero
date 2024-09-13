@@ -15,16 +15,19 @@
 import contextlib
 import itertools
 import logging
+from asyncio import Lock
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from enum import Enum, auto
+from logging import Logger
 from random import Random
 from typing import Any, ClassVar, Generic, Self, TypeVar
 
 import cocotb
-from cocotb.handle import ModifiableObject
-from cocotb.log import SimLog
-from cocotb.triggers import Event, First, Lock
+
+# TODO @intuity: Is there a better type than SimHandleBase
+from cocotb.handle import SimHandleBase
+from cocotb.triggers import Event, First
 
 from .component import Component
 from .driver import BaseDriver
@@ -46,7 +49,7 @@ class SeqLock:
 
     def __init__(self, name: str) -> None:
         self._name = name
-        self._lock = Lock(name)
+        self._lock = Lock()
         self._locked_by: BaseSequence | None = None
 
     @classmethod
@@ -276,15 +279,15 @@ class SeqProxy(EventEmitter, Generic[C]):
             raise Exception(f"Cannot enqueue to '{type(self._component).__name__}'")
 
     @property
-    def clk(self) -> ModifiableObject:
+    def clk(self) -> SimHandleBase:
         return self._component.clk
 
     @property
-    def rst(self) -> ModifiableObject:
+    def rst(self) -> SimHandleBase:
         return self._component.rst
 
     @property
-    def io(self) -> ModifiableObject:
+    def io(self) -> SimHandleBase:
         return self._component.io
 
     def idle(self) -> None:
@@ -302,7 +305,7 @@ class SeqArbiter:
     based on the locks they are requesting.
     """
 
-    def __init__(self, log: SimLog, random: Random):
+    def __init__(self, log: Logger, random: Random):
         self._log = log
         self._debug = log.getEffectiveLevel() <= logging.DEBUG
         self._random = Random(random.random())
@@ -417,11 +420,11 @@ class SeqContext:
     def __init__(
         self,
         sequence: "BaseSequence",
-        log: SimLog,
+        log: Logger,
         random: Random,
         arbiter: SeqArbiter,
-        clk: ModifiableObject,
-        rst: ModifiableObject,
+        clk: SimHandleBase,
+        rst: SimHandleBase,
     ) -> None:
         self._sequence = sequence
         self._arbiter = arbiter
@@ -597,11 +600,11 @@ class BaseSequence:
 
         # Create a wrapper to allow log and random to be inserted by the bench
         async def _inner(
-            log: SimLog,
+            log: Logger,
             random: Random,
             arbiter: SeqArbiter,
-            clk: ModifiableObject,
-            rst: ModifiableObject,
+            clk: SimHandleBase,
+            rst: SimHandleBase,
         ):
             # Create a context
             ctx = SeqContext(self, log, random, arbiter, clk, rst)

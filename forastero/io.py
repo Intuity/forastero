@@ -16,8 +16,9 @@ from collections.abc import Callable
 from enum import IntEnum
 from typing import Any
 
-from cocotb.handle import HierarchyObject, NonHierarchyObject
-from cocotb.log import SimLog
+# TODO @intuity: Is there a better type than SimHandleBase?
+from cocotb.handle import HierarchyObject, SimHandleBase
+from cocotb.logging import SimLog
 
 
 class IORole(IntEnum):
@@ -41,7 +42,7 @@ class SignalWrapper:
     :param hier: The signal hierarchy object
     """
 
-    def __init__(self, hier: HierarchyObject | NonHierarchyObject) -> None:
+    def __init__(self, hier: HierarchyObject | SimHandleBase) -> None:
         self._hier = hier
 
         # Recursively discover all components (in case of a nested struct)
@@ -58,10 +59,12 @@ class SignalWrapper:
         self._packing = []
         self._width = 0
         for comp in all_components[::-1]:
-            if comp._range is None:
+            if comp.range is None:
                 c_msb, c_lsb = len(comp) - 1, 0
+            elif comp.range.direction == "downto":
+                c_msb, c_lsb = comp.range.left, comp.range.right
             else:
-                c_msb, c_lsb = comp._range
+                c_msb, c_lsb = comp.range.right, comp.range.left
             rel_msb, rel_lsb = self._width + c_msb, self._width + c_lsb
             width = len(comp)
             self._packing.append(((rel_lsb, rel_msb, (1 << width) - 1), comp))

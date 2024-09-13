@@ -21,16 +21,16 @@ import random
 import traceback
 from collections import defaultdict
 from collections.abc import Callable, Coroutine
+from logging import Logger
 from pathlib import Path
 from typing import Any, ClassVar
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.handle import HierarchyObject, ModifiableObject
-from cocotb.log import SimLog, SimLogFormatter, SimTimeContextFilter
-from cocotb.result import SimTimeoutError
+from cocotb.handle import HierarchyObject, SimHandleBase
+from cocotb.logging import SimLog, SimLogFormatter, SimTimeContextFilter
 from cocotb.task import Task
-from cocotb.triggers import ClockCycles, Event, with_timeout
+from cocotb.triggers import ClockCycles, Event, SimTimeoutError, with_timeout
 
 from .component import Component
 from .driver import BaseDriver
@@ -85,8 +85,9 @@ class BaseBench:
     def __init__(
         self,
         dut: HierarchyObject,
-        clk: ModifiableObject | None = None,
-        rst: ModifiableObject | None = None,
+        # TODO @intuity: Is there a better type than SimHandleBase?
+        clk: SimHandleBase | None = None,
+        rst: SimHandleBase | None = None,
         clk_drive: bool = True,
         clk_period: float = 1,
         clk_units: str = "ns",
@@ -137,7 +138,7 @@ class BaseBench:
         # Events
         self.evt_ready = Event()
 
-    def fork_log(self, *scope: str) -> SimLog:
+    def fork_log(self, *scope: str) -> Logger:
         """
         Create a new descedent of the root simulation log with a given context.
 
@@ -433,20 +434,52 @@ class BaseBench:
                                   (defaults to 1)
         """
 
-        class _Testcase(cocotb.test):
-            def __call__(self, dut, *args, **kwargs):
-                async def _run_test():
-                    # Clear components registered from previous runs
-                    Component.COMPONENTS.clear()
-                    # Create a testbench instance
+        def _inner(func):
+            async def _imposter(dut):
+                # Clear components registered from previous runs
+                Component.COMPONENTS.clear()
+                # Create a testbench instance
+                try:
+                    tb = cls(dut)
+                except Exception as e:
+                    dut._log.error(
+                        f"Caught exception during {cls.__name__} constuction: {e}"
+                    )
+                    dut._log.error(traceback.format_exc())
+                    raise e
+                # Log what's going on
+                tc_name = func.__name__
+                tb._orch_log.info(f"Preparing testcase {tc_name}")
+                # Check all components have been registered
+                missing = 0
+                for comp in Component.COMPONENTS:
+                    if comp not in tb._components.values():
+                        tb._orch_log.error(
+                            f"{type(comp).__name__} '{comp.name}' has "
+                            f"not been registered with the testbench"
+                        )
+                        missing += 1
+                assert missing == 0, "Some bench components have not been registered"
+                # If clock driving specified, start the clock
+                if tb.clk_drive:
+                    cocotb.start_soon(
+                        Clock(tb.clk, tb.clk_period, units=tb.clk_units).start()
+                    )
+                # If reset requested, run the sequence
+                if reset:
+                    tb._orch_log.info("Resetting the DUT")
                     try:
-                        tb = cls(dut)
+                        await tb.reset(
+                            init=reset_init,
+                            wait_during=reset_wait_during,
+                            wait_after=reset_wait_after,
+                        )
                     except Exception as e:
                         dut._log.error(f"Caught exception during {cls.__name__} constuction: {e}")
                         dut._log.error(traceback.format_exc())
                         raise e
                     # Log what's going on
-                    tc_name = self._func.__name__
+                    tc_name = func.__name__
                     tb._orch_log.info(f"Preparing testcase {tc_name}")
                     # Check all components have been registered
                     missing = 0
@@ -476,12 +509,12 @@ class BaseBench:
                             raise e
                         tb._orch_log.info("DUT reset complete")
 
-                    # Mark ready
-                    tb.evt_ready.set()
+                # Mark ready
+                tb.evt_ready.set()
 
-                    # Wait for all components to be ready
-                    for comp in tb._components.values():
-                        await comp.ready()
+                # Wait for all components to be ready
+                for comp in tb._components.values():
+                    await comp.ready()
 
                     # Create a forked log
                     log = tb.fork_log("test", tc_name)
@@ -489,7 +522,7 @@ class BaseBench:
                     # Are there any parameters for this test?
                     raw_tc_params = cls.get_parameter("testcases")
                     params = {}
-                    for key, cast in cls.TEST_REQ_PARAMS[self._func]:
+                    for key, cast in cls.TEST_REQ_PARAMS[func]:
                         # First look for "<TESTCASE_NAME>.<PARAMETER_NAME>"
                         # but fall back to just "<PARAMETER_NAME>"
                         value = raw_tc_params.get(f"{tc_name}.{key}", raw_tc_params.get(key, None))
@@ -506,11 +539,11 @@ class BaseBench:
                         log.debug(f"Parameter {key}={value}")
                         params[key] = value
 
-                    # Declare an intermediate function (this allows us to wrap
-                    # with a optional timeout)
-                    async def _inner():
-                        await self._func(tb, log, *args, **kwargs, **params)
-                        await tb.close_down(loops=shutdown_loops, delay=shutdown_delay)
+                # Declare an intermediate function (this allows us to wrap
+                # with a optional timeout)
+                async def _inner():
+                    await func(tb, log, *args, **kwargs, **params)
+                    await tb.close_down(loops=shutdown_loops, delay=shutdown_delay)
 
                     # Run with a timeout if specified
                     postponed = None
@@ -530,9 +563,9 @@ class BaseBench:
                                         f"items remaining in its queue"
                                     )
 
-                    # Report status of scoreboard channels
-                    for _, channel in tb.scoreboard.channels.items():
-                        channel.report()
+                # Report status of scoreboard channels
+                for _, channel in tb.scoreboard.channels.items():
+                    channel.report()
 
                     # When using postmortem, catch errors before exit
                     if tb.get_parameter("postmortem", False) and (
@@ -545,17 +578,15 @@ class BaseBench:
                     if postponed is not None:
                         raise postponed
 
-                    # Check the result
-                    assert tb.scoreboard.result, "Scoreboard reported test failure"
+                # Check the result
+                assert tb.scoreboard.result, "Scoreboard reported test failure"
 
-                return cocotb.decorators._RunningTest(_run_test(), self)
+            _imposter.__module__ = cls.__module__.split(".")[0]
+            _imposter.__name__ = func.__name__
+            _imposter.__qualname__ = func.__qualname__
+            cocotb.test(_imposter)
 
-        def _do_decorate(func):
-            # _testcase acts as a function which returns a decorator, hence the
-            # double function call
-            return _Testcase(*args, **kwargs)(func)
-
-        return _do_decorate
+        return _inner
 
     @classmethod
     def parameter(cls, name: str, cast: Callable[[str], Any]) -> Callable:
