@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import dataclasses
 from enum import Enum, auto
 
 import cocotb
@@ -26,6 +27,11 @@ from .transaction import BaseTransaction
 class DriverEvent(Enum):
     PRE_DRIVE = auto()
     POST_DRIVE = auto()
+
+
+@dataclasses.dataclass()
+class DriverStatistics:
+    dequeued: int = 0
 
 
 class BaseDriver(Component):
@@ -43,6 +49,7 @@ class BaseDriver(Component):
 
     def __init__(self, *args, **kwds) -> None:
         super().__init__(*args, **kwds)
+        self.stats = DriverStatistics()
         self._queue: Queue[BaseTransaction] = Queue()
         cocotb.start_soon(self._driver_loop())
 
@@ -102,6 +109,7 @@ class BaseDriver(Component):
                 obj._c_event.set()
             # Drive the transaction
             await self.drive(obj)
+            self.stats.dequeued += 1
             # Notify any post-drive subscribers
             self.publish(DriverEvent.POST_DRIVE, obj)
             if obj._f_event is DriverEvent.POST_DRIVE:
