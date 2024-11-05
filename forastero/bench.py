@@ -66,6 +66,8 @@ class BaseBench:
         "profiling": None,
         # Enable fast failure
         "fail_fast": (os.environ.get("FAIL_FAST", "no").lower() == "yes"),
+        # Postmortem (activate a Python breakpoint after a failure)
+        "postmortem": False,
         # Testcase parameters
         "testcases": {},
     }
@@ -106,7 +108,11 @@ class BaseBench:
         # NOTE: This should really only be used by internal testbench processes
         self._orch_log = self.fork_log("orchestration")
         # Create a scoreboard
-        self.scoreboard = Scoreboard(tb=self, fail_fast=self.get_parameter("fail_fast"))
+        self.scoreboard = Scoreboard(
+            tb=self,
+            fail_fast=self.get_parameter("fail_fast", False),
+            postmortem=self.get_parameter("postmortem", False),
+        )
         # Track components
         self._components = {}
         self._processes = {}
@@ -472,6 +478,14 @@ class BaseBench:
                     # Report status of scoreboard channels
                     for _, channel in tb.scoreboard.channels.items():
                         channel.report()
+
+                    # When using postmortem, catch errors before exit
+                    if (
+                        tb.get_parameter("postmortem", False) and
+                        ((postponed is not None) or not tb.scoreboard.result)
+                    ):
+                        tb._orch_log.warning("Entering postmortem")
+                        breakpoint()
 
                     # If an exception has been postponed, re-raise it now
                     if postponed is not None:

@@ -42,6 +42,12 @@ class Queue:
         self._entries = []
         self._on_push = None
 
+    def __len__(self) -> int:
+        return self.level
+
+    def __getitem__(self, key) -> BaseTransaction | list[BaseTransaction]:
+        return self._entries[key]
+
     @property
     def level(self) -> int:
         return len(self._entries)
@@ -313,7 +319,7 @@ class FunnelChannel(Channel):
         monitor: BaseMonitor,
         log: SimLog,
         filter_fn: Callable | None,
-        ref_queues: list[str],
+        ref_queues: list[str] | tuple[str],
         timeout_ns: int | None = None,
         polling_ns: int = 100,
     ) -> None:
@@ -424,11 +430,19 @@ class Scoreboard:
     is divided into different 'channels', one per monitor, that handle the
     comparison of captured and reference objects and reporting of any differences.
 
-    :param fail_fast: Stop the test as soon as a mismatch is reported (default: False)
+    :param tb:         Reference to the testbench
+    :param fail_fast:  Stop the test as soon as a mismatch is reported (default: False)
+    :param postmortem: Enter debug on a mismatch (default: False)
     """
 
-    def __init__(self, tb: "BaseBench", fail_fast: bool = False):  # noqa: F821
+    def __init__(
+        self,
+        tb: "BaseBench",
+        fail_fast: bool = False,
+        postmortem: bool = False,
+    ):  # noqa: F821
         self.fail_fast = fail_fast
+        self.postmortem = postmortem
         self._mismatches = []
         self.tb = tb
         self.log = self.tb.fork_log("scoreboard")
@@ -439,7 +453,7 @@ class Scoreboard:
         monitor: BaseMonitor,
         verbose=False,
         filter_fn: Callable | None = None,
-        queues: list[str] | None = None,
+        queues: list[str] | tuple[str] | None = None,
         timeout_ns: int | None = None,
         polling_ns: int = 100,
     ) -> None:
@@ -460,7 +474,7 @@ class Scoreboard:
                            in the monitor queue in nanoseconds (defaults to 100 ns)
         """
         assert monitor.name not in self.channels, f"Monitor known for '{monitor.name}'"
-        if isinstance(queues, list) and len(queues) > 0:
+        if isinstance(queues, (list, tuple)) and len(queues) > 0:
             channel = FunnelChannel(
                 monitor.name,
                 monitor,
@@ -510,6 +524,14 @@ class Scoreboard:
         self.log.info(monitor.tabulate(reference))
         self._mismatches.append((channel, monitor, reference))
         if self.fail_fast:
+            if self.postmortem:
+                self.log.warning(
+                    "Entering fast-fail postmortem - the 'monitor' variable gives "
+                    "the captured transaction, 'reference' the reference "
+                    "transaction, and 'channel' gives access to the scoreboard "
+                    "channel"
+                )
+                breakpoint()
             raise MiscompareError(channel, monitor, reference)
 
     def _match(
@@ -523,6 +545,10 @@ class Scoreboard:
         :param monitor:   The transaction captured by a monitor
         :param reference: The reference transaction produced by a model
         """
+        self.log.info(
+            f"Match on channel {channel.monitor.name} for transaction index "
+            f"{channel.total-1}"
+        )
         self.log.info(monitor.tabulate(reference))
 
     @property
