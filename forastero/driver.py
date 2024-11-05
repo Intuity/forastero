@@ -76,8 +76,7 @@ class BaseDriver(Component):
         # Sanity check
         if not isinstance(transaction, BaseTransaction):
             raise TypeError(
-                f"Transaction objects should inherit from "
-                f"BaseTransaction unlike {transaction}"
+                f"Transaction objects should inherit from " f"BaseTransaction unlike {transaction}"
             )
         # Does this transaction need an event?
         if wait_for is not None:

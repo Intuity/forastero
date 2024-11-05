@@ -400,9 +400,7 @@ class FunnelChannel(Channel):
             self.log.info(self._q_mon.peek().tabulate())
         for key, queue in self._q_ref.items():
             if queue.level > 0:
-                self.log.info(
-                    f"Packet at head of {self.name}'s reference queue '{key}':"
-                )
+                self.log.info(f"Packet at head of {self.name}'s reference queue '{key}':")
                 self.log.info(queue.peek().tabulate())
 
 
@@ -437,10 +435,10 @@ class Scoreboard:
 
     def __init__(
         self,
-        tb: "BaseBench",
+        tb,
         fail_fast: bool = False,
         postmortem: bool = False,
-    ):  # noqa: F821
+    ):
         self.fail_fast = fail_fast
         self.postmortem = postmortem
         self._mismatches = []
@@ -474,7 +472,7 @@ class Scoreboard:
                            in the monitor queue in nanoseconds (defaults to 100 ns)
         """
         assert monitor.name not in self.channels, f"Monitor known for '{monitor.name}'"
-        if isinstance(queues, (list, tuple)) and len(queues) > 0:
+        if isinstance(queues, list | tuple) and len(queues) > 0:
             channel = FunnelChannel(
                 monitor.name,
                 monitor,
@@ -546,8 +544,7 @@ class Scoreboard:
         :param reference: The reference transaction produced by a model
         """
         self.log.info(
-            f"Match on channel {channel.monitor.name} for transaction index "
-            f"{channel.total-1}"
+            f"Match on channel {channel.monitor.name} for transaction index " f"{channel.total-1}"
         )
         self.log.info(monitor.tabulate(reference))
 

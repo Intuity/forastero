@@ -320,9 +320,7 @@ class BaseBench:
             # All drivers and monitors should be idle
             self._orch_log.info(f"Shutdown loop ({loop_idx+1}/{loops})")
             # Wait for sequences to complete
-            self._orch_log.debug(
-                f"Waiting for {len(self._sequences)} sequences to complete"
-            )
+            self._orch_log.debug(f"Waiting for {len(self._sequences)} sequences to complete")
             for sequence in self._sequences:
                 await sequence
             # Wait for minimum delay
@@ -384,8 +382,7 @@ class BaseBench:
                         tb = cls(dut)
                     except Exception as e:
                         dut._log.error(
-                            f"Caught exception during {cls.__name__} constuction: "
-                            f"{e}"
+                            f"Caught exception during {cls.__name__} constuction: " f"{e}"
                         )
                         dut._log.error(traceback.format_exc())
                         raise e
@@ -401,14 +398,10 @@ class BaseBench:
                                 f"not been registered with the testbench"
                             )
                             missing += 1
-                    assert (
-                        missing == 0
-                    ), "Some bench components have not been registered"
+                    assert missing == 0, "Some bench components have not been registered"
                     # If clock driving specified, start the clock
                     if tb.clk_drive:
-                        cocotb.start_soon(
-                            Clock(tb.clk, tb.clk_period, units=tb.clk_units).start()
-                        )
+                        cocotb.start_soon(Clock(tb.clk, tb.clk_period, units=tb.clk_units).start())
                     # If reset requested, run the sequence
                     if reset:
                         tb._orch_log.info("Resetting the DUT")
@@ -439,9 +432,7 @@ class BaseBench:
                     params = {}
                     for key in cls.TEST_REQ_PARAMS[self._func]:
                         # First look for "<TESTCASE_NAME>.<PARAMETER_NAME>"
-                        if (
-                            value := raw_tc_params.get(f"{tc_name}.{key}", None)
-                        ) is not None:
+                        if (value := raw_tc_params.get(f"{tc_name}.{key}", None)) is not None:
                             log.debug(f"Parameter {key}={value}")
                             params[key] = value
                         # Fall back to just the parameter name
@@ -464,9 +455,7 @@ class BaseBench:
                             await with_timeout(_inner(), timeout, "ns")
                         except SimTimeoutError as e:
                             postponed = e
-                            tb._orch_log.error(
-                                f"Simulation timed out after {timeout} ns"
-                            )
+                            tb._orch_log.error(f"Simulation timed out after {timeout} ns")
                             # List any busy drivers
                             for name, driver in tb._components.items():
                                 if isinstance(driver, BaseDriver) and driver.queued > 0:
@@ -480,9 +469,8 @@ class BaseBench:
                         channel.report()
 
                     # When using postmortem, catch errors before exit
-                    if (
-                        tb.get_parameter("postmortem", False) and
-                        ((postponed is not None) or not tb.scoreboard.result)
+                    if tb.get_parameter("postmortem", False) and (
+                        (postponed is not None) or not tb.scoreboard.result
                     ):
                         tb._orch_log.warning("Entering postmortem")
                         breakpoint()

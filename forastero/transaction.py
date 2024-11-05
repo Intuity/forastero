@@ -38,7 +38,7 @@ class BaseTransaction:
     _f_event: Enum | None = dataclasses.field(default=None, compare=False)
     _c_event: Event | None = dataclasses.field(default=None, compare=False)
 
-    def format(self, field: str, value: Any) -> str:
+    def format(self, field: str, value: Any) -> str:  # noqa: A003
         """
         Subclasses of BaseTransaction may override this to format different
         fields however they prefer.
