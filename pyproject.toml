@@ -30,8 +30,6 @@ pytest = "^8.1.1"
 target-version = "py311"
 # Character length of 88 is compatible with Black
 line-length = 100
-
-[tool.ruff.lint]
 fixable = ["ALL"]
 unfixable = []
 # See https://beta.ruff.rs/docs/rules
