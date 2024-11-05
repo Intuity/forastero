@@ -257,7 +257,7 @@ class BaseIO:
             raw = int(item.value)
             return (raw == 1) if len(item) == 1 else raw
 
-    def set(self, comp: str, value: Any) -> None:  # noqa: A003
+    def set(self, comp: str, value: Any) -> None:
         """
         Set the value of a particular signal if it exists.
 

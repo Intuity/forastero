@@ -437,7 +437,7 @@ class SeqContext:
         self._locks_active = False
 
     @property
-    def id(self) -> str:  # noqa: A003
+    def id(self) -> str:
         return f"{self._sequence.name}[{self._ctx_id}]"
 
     @contextlib.asynccontextmanager
