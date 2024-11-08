@@ -28,9 +28,7 @@ class IORole(IntEnum):
 
     @staticmethod
     def opposite(value: "IntEnum") -> "IntEnum":
-        return {IORole.INITIATOR: IORole.RESPONDER, IORole.RESPONDER: IORole.INITIATOR}[
-            value
-        ]
+        return {IORole.INITIATOR: IORole.RESPONDER, IORole.RESPONDER: IORole.INITIATOR}[value]
 
 
 class SignalWrapper:
@@ -89,9 +87,7 @@ class SignalWrapper:
         return self._width
 
 
-def io_prefix_style(
-    bus: str | None, component: str, role_bus: IORole, role_comp: IORole
-) -> str:
+def io_prefix_style(bus: str | None, component: str, role_bus: IORole, role_comp: IORole) -> str:
     """
     Style signal names as i/o_(<BUS>_)<COMPONENT> for example i_dma_awaddr and
     o_dma_awready.
@@ -114,9 +110,7 @@ def io_prefix_style(
     return f"{full_name}_{component}"
 
 
-def io_suffix_style(
-    bus: str | None, component: str, role_bus: IORole, role_comp: IORole
-) -> str:
+def io_suffix_style(bus: str | None, component: str, role_bus: IORole, role_comp: IORole) -> str:
     """
     Style signal names as (<BUS>_)<COMPONENT>_i/o for example dma_awaddr_i and
     dma_awready_o.
@@ -137,9 +131,7 @@ def io_suffix_style(
     return f"{full_name}{component}_{mapping[role_bus, role_comp]}"
 
 
-def io_plain_style(
-    bus: str | None, component: str, role_bus: IORole, role_comp: IORole
-) -> str:
+def io_plain_style(bus: str | None, component: str, role_bus: IORole, role_comp: IORole) -> str:
     """
     Style signal names as (<BUS>_)<COMPONENT> for example dma_awaddr and
     dma_awready.
@@ -229,9 +221,7 @@ class BaseIO:
 
     def initialise(self, role: IORole) -> None:
         """Initialise signals according to the active role"""
-        for sig in (
-            self.__initiators if role == IORole.INITIATOR else self.__responders
-        ).values():
+        for sig in (self.__initiators if role == IORole.INITIATOR else self.__responders).values():
             sig.value = 0
 
     def set_default(self, comp: str, value: Any) -> None:

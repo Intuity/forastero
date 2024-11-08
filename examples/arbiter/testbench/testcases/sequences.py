@@ -79,8 +79,7 @@ async def random_seq(
     tb.schedule(stream_traffic_seq(stream=tb.b_init, length=single_pkts))
     # Schedule isolated bursts of packets on upstream interfaces A & B
     log.info(
-        f"Scheduling {burst_count} bursts between {burst_min} and {burst_max} "
-        f"packets in length"
+        f"Scheduling {burst_count} bursts between {burst_min} and {burst_max} " f"packets in length"
     )
     for _ in range(burst_count):
         tb.schedule(

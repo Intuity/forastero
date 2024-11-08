@@ -49,6 +49,8 @@ class BaseTransaction:
         """
         if field == "timestamp":
             return f"{value} ns"
+        elif isinstance(value, Enum):
+            return f"{value.name} ({int(value)})"
         elif isinstance(value, int):
             return f"0x{value:X}"
         else:

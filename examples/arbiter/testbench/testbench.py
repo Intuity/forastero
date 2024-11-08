@@ -50,9 +50,7 @@ class Testbench(BaseBench):
         # Register drivers and monitors for the stream interfaces
         self.register("a_init", StreamInitiator(self, a_io, self.clk, self.rst))
         self.register("b_init", StreamInitiator(self, b_io, self.clk, self.rst))
-        self.register(
-            "x_resp", StreamResponder(self, x_io, self.clk, self.rst, blocking=False)
-        )
+        self.register("x_resp", StreamResponder(self, x_io, self.clk, self.rst, blocking=False))
         self.register(
             "x_mon",
             StreamMonitor(self, x_io, self.clk, self.rst),
@@ -63,9 +61,7 @@ class Testbench(BaseBench):
         self.a_init.subscribe(DriverEvent.POST_DRIVE, self.model)
         self.b_init.subscribe(DriverEvent.POST_DRIVE, self.model)
 
-    def model(
-        self, driver: StreamInitiator, event: DriverEvent, obj: StreamTransaction
-    ) -> None:
+    def model(self, driver: StreamInitiator, event: DriverEvent, obj: StreamTransaction) -> None:
         """
         Demonstration model that forwards transactions seen on interfaces A & B
         and sets bit 32 (to match the filtering behaviour below)

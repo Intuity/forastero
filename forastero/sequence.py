@@ -160,13 +160,9 @@ class SeqRandomVariable:
         self.choices = choices
         # Sanity checks
         assert len(name) > 0, "Variable name cannot be an empty string"
-        assert not name.endswith(
-            "_bitwidth"
-        ), "Variable name must not end with '_bitwidth'"
+        assert not name.endswith("_bitwidth"), "Variable name must not end with '_bitwidth'"
         assert not name.endswith("_range"), "Variable name must not end with '_range'"
-        assert not name.endswith(
-            "_choices"
-        ), "Variable name must not end with '_choices'"
+        assert not name.endswith("_choices"), "Variable name must not end with '_choices'"
         assert (
             len([x for x in (bit_width, range, choices) if x is not None]) <= 1
         ), "Only one of bit width, range, or choices may be specified"
@@ -343,9 +339,7 @@ class SeqArbiter:
             # Wait until something is queued up
             await self._evt_queue.wait()
             # Log scheduling is starting
-            log.debug(
-                f"Starting scheduling pass {idx} with {SeqLock.count_all_locks()} locks"
-            )
+            log.debug(f"Starting scheduling pass {idx} with {SeqLock.count_all_locks()} locks")
             # While stuff is queued, attempt to schedule it
             while self._queue:
                 # Keep track of which locks are available
@@ -381,13 +375,9 @@ class SeqArbiter:
                     # If no more locks are available, break out early
                     if not available:
                         break
-                log.debug(
-                    f"Scheduled {len(scheduled)} sequences, {len(locks)} locks remain"
-                )
+                log.debug(f"Scheduled {len(scheduled)} sequences, {len(locks)} locks remain")
                 # Prune the scheduled sequences
-                self._queue = [
-                    x for i, x in enumerate(self._queue) if i not in scheduled
-                ]
+                self._queue = [x for i, x in enumerate(self._queue) if i not in scheduled]
                 # If scheduling was unsuccessful then either wait for locks to
                 # be released or new sequences to be scheduled
                 # NOTE: As the scheduling loop contains an `await` it is
@@ -399,9 +389,7 @@ class SeqArbiter:
                     # Clear trigger event so that the next queue_for raises it
                     self._evt_queue.clear()
                     await First(
-                        SeqContext.SEQ_SHARED_EVENT.get_wait_event(
-                            SeqContextEvent.UNLOCKED
-                        ).wait(),
+                        SeqContext.SEQ_SHARED_EVENT.get_wait_event(SeqContextEvent.UNLOCKED).wait(),
                         self._evt_queue.wait(),
                     )
             # Log at the end of this pass
@@ -463,9 +451,7 @@ class SeqContext:
                            will be resolved to the equivalent component locks)
         """
         # Mark that locking is active
-        assert (
-            not self._locks_active
-        ), "You must release all locks before re-acquisition"
+        assert not self._locks_active, "You must release all locks before re-acquisition"
         self._locks_active = True
         # Figure out all the locks that need to be acquired
         need: list[SeqLock] = []
@@ -479,9 +465,7 @@ class SeqContext:
         # Yield to allow the sequence to execute
         yield
         # Release any remaining locks
-        self.log.debug(
-            f"Releasing {len(lockables)} locks: " + ", ".join(x._name for x in need)
-        )
+        self.log.debug(f"Releasing {len(lockables)} locks: " + ", ".join(x._name for x in need))
         for lock in need:
             if lock._locked_by is self:
                 lock.release(self)
@@ -560,12 +544,8 @@ class BaseSequence:
         """
         req_name = req_name.strip().lower().replace(" ", "_")
         assert len(req_name) > 0, "Requirement name cannot be an empty string"
-        assert (
-            req_name not in self._requires
-        ), f"Requirement already placed on {req_name}"
-        assert (
-            req_name not in self._locks
-        ), f"Requirement {req_name} clashes with a lock"
+        assert req_name not in self._requires, f"Requirement already placed on {req_name}"
+        assert req_name not in self._locks, f"Requirement {req_name} clashes with a lock"
         self._requires[req_name] = req_type
         return self
 
@@ -580,12 +560,8 @@ class BaseSequence:
         """
         lock_name = lock_name.strip().lower().replace(" ", "_")
         assert len(lock_name) > 0, "Lock name cannot be an empty string"
-        assert (
-            lock_name not in self._locks
-        ), f"Lock '{lock_name}' has already been defined"
-        assert (
-            lock_name not in self._requires
-        ), f"Lock {lock_name} clashes with a requirement"
+        assert lock_name not in self._locks, f"Lock '{lock_name}' has already been defined"
+        assert lock_name not in self._requires, f"Lock {lock_name} clashes with a requirement"
         self._locks.append(lock_name)
         return self
 
@@ -640,9 +616,7 @@ class BaseSequence:
                 match = kwds[name]
                 del kwds[name]
                 if not isinstance(match, ctype):
-                    raise Exception(
-                        f"Component '{name}' is not of type {ctype.__name__}"
-                    )
+                    raise Exception(f"Component '{name}' is not of type {ctype.__name__}")
                 # Ensure a component lock exists
                 comp_lock = SeqLock.get_component_lock(match)
                 # Pickup the component and wrap it in a proxy
