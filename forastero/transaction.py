@@ -42,7 +42,7 @@ class BaseTransaction:
     def copy(self) -> "BaseTransaction":
         return copy.copy(self)
 
-    def format(self, field: str, value: Any) -> str:  # noqa: A003
+    def format(self, field: str, value: Any) -> str:
         """
         Subclasses of BaseTransaction may override this to format different
         fields however they prefer.

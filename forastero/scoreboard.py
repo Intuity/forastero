@@ -139,7 +139,7 @@ class Channel:
         self.match_window = match_window or 1
         assert (
             isinstance(self.match_window, int) and self.match_window > 0
-        ), f"Channel matching window must be a positive integer"
+        ), "Channel matching window must be a positive integer"
         self._q_mon = Queue()
         self._q_ref = Queue()
         self._lock = Lock()
@@ -224,7 +224,7 @@ class Channel:
             next_ref = None
             while next_ref is None:
                 # Search within the match window
-                for idx, peek_ref in enumerate(self._q_ref[:self.match_window]):
+                for idx, peek_ref in enumerate(self._q_ref[: self.match_window]):
                     if peek_ref == peek_mon:
                         next_ref = await self._q_ref.pop(idx)
                         break

@@ -394,9 +394,7 @@ class BaseBench:
                     try:
                         tb = cls(dut)
                     except Exception as e:
-                        dut._log.error(
-                            f"Caught exception during {cls.__name__} constuction: {e}"
-                        )
+                        dut._log.error(f"Caught exception during {cls.__name__} constuction: {e}")
                         dut._log.error(traceback.format_exc())
                         raise e
                     # Log what's going on
