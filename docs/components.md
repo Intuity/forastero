@@ -380,10 +380,12 @@ call.
 
 ### Scoreboard Channel Types
 
+#### Simple Channels
+
 When `self.register(...)` is called it will register the monitor against the
 scoreboard and queue captured transactions into a dedicated channel (unless
 `scoreboard=False` is set). If no other parameters are provided then the
-scoreboard will create a simpple channel.
+scoreboard will create a simple channel.
 
 A simple channel will expect all transactions submitted to the reference queue
 to appear in the same order in the monitor's queue, and whenever a mismatch is
@@ -404,6 +406,41 @@ class Testbench(BaseBench):
         self.scoreboard.channels["stream_mon"].push_reference(StreamTransaction(...))
 ```
 
+#### Match Window Channels
+
+Sometimes it is necessary to relax the precise ordering matches between captured
+and reference transactions - for example if a black-box component is performing
+an arbitration between different upstream initiators onto a single downstream
+port then the testbench may want to just check for transaction consistency
+without modelling the exact ordering function implemented by the hardware.
+
+To support this, the scoreboard offers matching windows - allowing a captured
+transaction to match against any of the first `N` entries of the reference queue.
+This can be configured using the `scoreboard_match_window` argument when registering
+a monitor.
+
+In the example shown below the matching window is set to a value of 4, this
+means that each captured transaction can be matched against entries `0`, `1`,
+`2`, or `3` of the reference queue.
+
+```python title="tb/testbench.py"
+from forastero import BaseBench, IORole
+from .stream import StreamIO, StreamMonitor
+
+class Testbench(BaseBench):
+    def __init__(self, dut) -> None:
+        super().__init__(dut, clk=dut.i_clk, rst=dut.i_rst)
+        ds_io = dsIO(dut, "ds", IORole.INITIATOR)
+        self.register("ds_mon",
+                      StreamMonitor(self, ds_io, self.clk, self.rst),
+                      scoreboard_match_window=4)
+
+    def model_stream(self):
+        self.scoreboard.channels["ds_mon"].push_reference(StreamTransaction(...))
+```
+
+#### Funnel Channels
+
 Another option is to register the monitor with multiple named scoreboard queues,
 thus creating a "funnel" channel. In this case each named queue of the channel
 must maintain order, but the scoreboard can pop entries from different queus in
@@ -421,7 +458,7 @@ class Testbench(BaseBench):
         stream_io = StreamIO(dut, "stream", IORole.INITIATOR)
         self.register("arb_output_mon",
                       StreamMonitor(self, stream_io, self.clk, self.rst),
-                      scoreboard_queues=["a", "b", "c"])
+                      scoreboard_queues=("a", "b", "c"))
 
     def model_arbiter_src_b(self):
         self.scoreboard.channels["arb_output_mon"].push_reference(

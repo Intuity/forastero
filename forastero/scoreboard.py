@@ -72,15 +72,16 @@ class Queue:
             self._on_push.set()
         self._on_push = None
 
-    async def pop(self) -> Any:
+    async def pop(self, index: int = 0) -> Any:
         """
         Pop an entry from the queue, if necessary blocking until one is available.
 
-        :returns: Object from the head of the queue
+        :param index: Index of the item to pop
+        :returns:     Object from the head of the queue
         """
         if len(self._entries) == 0:
             await self.wait()
-        return self._entries.pop(0)
+        return self._entries.pop(index)
 
     def wait(self) -> None:
         """Register an 'on-push' event and wait for it to be set by a push"""
@@ -104,15 +105,19 @@ class Channel:
     both queues and tested for equivalence. Any mismatches are reported to the
     scoreboard.
 
-    :param name:       Name of this scoreboard channel
-    :param monitor:    Handle to the monitor capturing traffic from the DUT
-    :param log:        Handle to the scoreboard log
-    :param filter_fn:  Function to filter or modify captured transactions
-    :param timeout_ns: Optional timeout to allow for a object sat at the front
-                       of the monitor queue to remain unmatched (in nanoseconds,
-                       a value of None disables the timeout mechanism)
-    :param polling_ns: How frequently to poll to check for unmatched items stuck
-                       in the monitor queue in nanoseconds (defaults to 100 ns)
+    :param name:         Name of this scoreboard channel
+    :param monitor:      Handle to the monitor capturing traffic from the DUT
+    :param log:          Handle to the scoreboard log
+    :param filter_fn:    Function to filter or modify captured transactions
+    :param timeout_ns:   Optional timeout to allow for a object sat at the front
+                         of the monitor queue to remain unmatched (in nanoseconds,
+                         a value of None disables the timeout mechanism)
+    :param polling_ns:   How frequently to poll to check for unmatched items stuck
+                         in the monitor queue in nanoseconds (defaults to 100 ns)
+    :param match_window: Where precise ordering of expected transactions is not
+                         known, a positive integer matching window can be used
+                         to match any of the next N transactions in the reference
+                         queue (where N is set by match_window)
     """
 
     def __init__(
@@ -123,6 +128,7 @@ class Channel:
         filter_fn: Callable | None,
         timeout_ns: int | None = None,
         polling_ns: int = 100,
+        match_window: int = 1,
     ) -> None:
         self.name = name
         self.monitor = monitor
@@ -130,6 +136,10 @@ class Channel:
         self.filter_fn = filter_fn
         self.timeout_ns = timeout_ns
         self.polling_ns = polling_ns
+        self.match_window = match_window or 1
+        assert (
+            isinstance(self.match_window, int) and self.match_window > 0
+        ), f"Channel matching window must be a positive integer"
         self._q_mon = Queue()
         self._q_ref = Queue()
         self._lock = Lock()
@@ -204,8 +214,28 @@ class Channel:
         await self._q_mon.wait_for_not_empty()
         # When a monitor transaction arrives, lock out the drain procedure
         await self._lock.acquire()
-        # Wait for the reference model to provide a transaction
-        next_ref = await self._q_ref.pop()
+        # If matching window is 1, wait for the first reference transaction
+        if self.match_window == 1:
+            next_ref = await self._q_ref.pop()
+        # If matching window > 1, peek at the captured transaction and search
+        # ahead the next N transactions
+        else:
+            peek_mon = self._q_mon[0]
+            next_ref = None
+            while next_ref is None:
+                # Search within the match window
+                for idx, peek_ref in enumerate(self._q_ref[:self.match_window]):
+                    if peek_ref == peek_mon:
+                        next_ref = await self._q_ref.pop(idx)
+                        break
+                # If no match found...
+                else:
+                    # ...if queue length less than the match window, wait for a push
+                    if len(self._q_ref) < self.match_window:
+                        await self._q_ref.on_push_event()
+                    # ...otherwise pop the zeroeth entry
+                    else:
+                        next_ref = await self._q_ref.pop(0)
         # Pop the front of the monitor queue
         next_mon = await self._q_mon.pop()
         # Return monitor-reference pair (don't release lock yet)
@@ -454,21 +484,26 @@ class Scoreboard:
         queues: list[str] | tuple[str] | None = None,
         timeout_ns: int | None = None,
         polling_ns: int = 100,
+        match_window: int = 1,
     ) -> None:
         """
         Attach a monitor to the scoreboard, creating and scheduling a new
         channel in the process.
 
-        :param monitor:    The monitor to attach
-        :param queues:     List of reference queue names, this causes a funnel
-                           type scoreboard channel to be used
-        :param filter_fn:  A filter function that can either drop or modify items
-                           recorded by the monitor prior to scoreboarding
-        :param timeout_ns: Optional timeout to allow for a object sat at the front
-                           of the monitor queue to remain unmatched (in nanoseconds,
-                           a value of None disables the timeout mechanism)
-        :param polling_ns: How frequently to poll to check for unmatched items stuck
-                           in the monitor queue in nanoseconds (defaults to 100 ns)
+        :param monitor:      The monitor to attach
+        :param queues:       List of reference queue names, this causes a funnel
+                             type scoreboard channel to be used
+        :param filter_fn:    A filter function that can either drop or modify items
+                             recorded by the monitor prior to scoreboarding
+        :param timeout_ns:   Optional timeout to allow for a object sat at the front
+                             of the monitor queue to remain unmatched (in nanoseconds,
+                             a value of None disables the timeout mechanism)
+        :param polling_ns:   How frequently to poll to check for unmatched items stuck
+                             in the monitor queue in nanoseconds (defaults to 100 ns)
+        :param match_window: Where precise ordering of expected transactions is not
+                             known, a positive integer matching window can be used
+                             to match any of the next N transactions in the reference
+                             queue (where N is set by match_window)
         """
         assert monitor.name not in self.channels, f"Monitor known for '{monitor.name}'"
         if isinstance(queues, list | tuple) and len(queues) > 0:
@@ -489,6 +524,7 @@ class Scoreboard:
                 filter_fn,
                 timeout_ns=timeout_ns,
                 polling_ns=polling_ns,
+                match_window=match_window,
             )
         self.channels[channel.name] = channel
         if self.log.getEffectiveLevel() <= logging.DEBUG:
@@ -543,7 +579,7 @@ class Scoreboard:
         :param reference: The reference transaction produced by a model
         """
         self.log.debug(
-            f"Match on channel {channel.monitor.name} for transaction index " f"{channel.total-1}"
+            f"Match on channel {channel.monitor.name} for transaction index {channel.total-1}"
         )
         self.log.debug(monitor.tabulate(reference))
 

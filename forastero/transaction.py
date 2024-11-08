@@ -42,7 +42,7 @@ class BaseTransaction:
     def copy(self) -> "BaseTransaction":
         return copy.copy(self)
 
-    def format(self, field: str, value: Any) -> str:
+    def format(self, field: str, value: Any) -> str:  # noqa: A003
         """
         Subclasses of BaseTransaction may override this to format different
         fields however they prefer.
@@ -58,7 +58,7 @@ class BaseTransaction:
         elif isinstance(value, int):
             return f"0x{value:X}"
         elif hasattr(value, "__int__"):
-            return f"0x{int(value):X}\n({value})"
+            return f"0x{int(value):X} ({value})"
         else:
             return str(value)
 
