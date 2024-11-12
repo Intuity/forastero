@@ -232,7 +232,7 @@ class Channel:
                 else:
                     # ...if queue length less than the match window, wait for a push
                     if len(self._q_ref) < self.match_window:
-                        await self._q_ref.on_push_event()
+                        await self._q_ref.on_push_event.wait()
                     # ...otherwise pop the zeroeth entry
                     else:
                         next_ref = await self._q_ref.pop(0)
