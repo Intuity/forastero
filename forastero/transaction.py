@@ -58,7 +58,7 @@ class BaseTransaction:
         elif isinstance(value, int):
             return f"0x{value:X}"
         elif hasattr(value, "__int__"):
-            return f"0x{int(value):X} ({value})"
+            return f"0x{int(value):X}\n({value})"
         else:
             return str(value)
 
