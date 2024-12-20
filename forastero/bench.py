@@ -282,7 +282,11 @@ class BaseBench:
             raise TypeError(f"Unsupported object: {comp_or_coro}")
         return comp_or_coro
 
-    def schedule(self, sequence: BaseSequence, blocking: bool = True) -> Task:
+    def schedule(
+        self,
+        sequence: tuple[BaseSequence, Callable[[SimLog, random.Random, SeqArbiter, ModifiableObject, ModifiableObject], None]],
+        blocking: bool = True,
+    ) -> Task:
         """
         Schedule a sequence to execute as part of a testcase.
 
@@ -291,8 +295,9 @@ class BaseBench:
                          allowed to finish
         :returns:        The scheduled task
         """
+        seq_def, seq_inner = sequence
         task = cocotb.start_soon(
-            sequence(
+            seq_inner(
                 self.fork_log("seq"),
                 self.random,
                 self._arbiter,
@@ -301,7 +306,7 @@ class BaseBench:
             )
         )
         if blocking:
-            self._sequences.append(task)
+            self._sequences.append((seq_def, task))
         return task
 
     def add_teardown(self, coro: Coroutine) -> None:
@@ -334,8 +339,9 @@ class BaseBench:
             self._orch_log.info(f"Shutdown loop ({loop_idx+1}/{loops})")
             # Wait for sequences to complete
             self._orch_log.debug(f"Waiting for {len(self._sequences)} sequences to complete")
-            for sequence in self._sequences:
-                await sequence
+            for (seq_def, seq_task) in self._sequences:
+                self._orch_log.debug(f"Waiting for sequence {seq_def.name}")
+                await seq_task
             # Wait for minimum delay
             self._orch_log.debug("Waiting for minimum delay")
             await ClockCycles(self.clk, delay)

@@ -661,7 +661,7 @@ class BaseSequence:
                 await self._fn(ctx, **comps, **locks, **arguments)
 
         # Return wrapped coroutine
-        return _inner
+        return self, _inner
 
 
 def sequence(auto_lock: bool = False) -> BaseSequence:
