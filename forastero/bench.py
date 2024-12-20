@@ -284,7 +284,10 @@ class BaseBench:
 
     def schedule(
         self,
-        sequence: tuple[BaseSequence, Callable[[SimLog, random.Random, SeqArbiter, ModifiableObject, ModifiableObject], None]],
+        sequence: tuple[
+            BaseSequence,
+            Callable[[SimLog, random.Random, SeqArbiter, ModifiableObject, ModifiableObject], None],
+        ],
         blocking: bool = True,
     ) -> Task:
         """
@@ -339,7 +342,7 @@ class BaseBench:
             self._orch_log.info(f"Shutdown loop ({loop_idx+1}/{loops})")
             # Wait for sequences to complete
             self._orch_log.debug(f"Waiting for {len(self._sequences)} sequences to complete")
-            for (seq_def, seq_task) in self._sequences:
+            for seq_def, seq_task in self._sequences:
                 self._orch_log.debug(f"Waiting for sequence {seq_def.name}")
                 await seq_task
             # Wait for minimum delay
