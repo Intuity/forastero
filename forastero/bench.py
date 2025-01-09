@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import asyncio
-import builtins
 import functools
 import json
 import logging
@@ -40,14 +39,16 @@ from .monitor import BaseMonitor
 from .scoreboard import Scoreboard
 from .sequence import BaseSequence, SeqArbiter
 
+
 def strtobool(val: str):
     lval = val.strip().lower()
-    if lval in ('y', 'yes', 't', 'true', 'on', '1'):
+    if lval in ("y", "yes", "t", "true", "on", "1"):
         return True
-    elif lval in ('n', 'no', 'f', 'false', 'off', '0'):
+    elif lval in ("n", "no", "f", "false", "off", "0"):
         return False
     else:
-        raise ValueError("invalid truth value %r" % (val,))
+        raise ValueError(f"Invalid bool `{val}`")
+
 
 class BaseBench:
     """
@@ -439,13 +440,13 @@ class BaseBench:
                     # Are there any parameters for this test?
                     raw_tc_params = cls.get_parameter("testcases")
                     params = {}
-                    for (key, cast) in cls.TEST_REQ_PARAMS[self._func]:
+                    for key, cast in cls.TEST_REQ_PARAMS[self._func]:
                         # First look for "<TESTCASE_NAME>.<PARAMETER_NAME>"
                         # but fall back to just "<PARAMETER_NAME>"
                         value = raw_tc_params.get(f"{tc_name}.{key}", raw_tc_params.get(key, None))
                         if value is None:
                             continue
-                        
+
                         # Cast string values to the appropriate type
                         if isinstance(value, str) and cast is not str:
                             if cast is bool:
@@ -455,8 +456,6 @@ class BaseBench:
 
                         log.debug(f"Parameter {key}={value}")
                         params[key] = value
-
-
 
                     # Declare an intermediate function (this allows us to wrap
                     # with a optional timeout)
