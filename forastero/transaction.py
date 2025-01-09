@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import dataclasses
 from enum import Enum
 from typing import Any, Optional
@@ -38,6 +39,9 @@ class BaseTransaction:
     _f_event: Enum | None = dataclasses.field(default=None, compare=False)
     _c_event: Event | None = dataclasses.field(default=None, compare=False)
 
+    def copy(self) -> "BaseTransaction":
+        return copy.copy(self)
+
     def format(self, field: str, value: Any) -> str:
         """
         Subclasses of BaseTransaction may override this to format different
@@ -53,6 +57,8 @@ class BaseTransaction:
             return f"{value.name} ({int(value)})"
         elif isinstance(value, int):
             return f"0x{value:X}"
+        elif hasattr(value, "__int__"):
+            return f"0x{int(value):X}\n({value})"
         else:
             return str(value)
 
