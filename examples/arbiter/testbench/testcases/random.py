@@ -22,8 +22,8 @@ from ..testbench import Testbench
 
 
 @Testbench.testcase()
-@Testbench.parameter("packets")
-@Testbench.parameter("delay")
+@Testbench.parameter("packets", int)
+@Testbench.parameter("delay", int)
 async def random(tb: Testbench, log: SimLog, packets: int = 1000, delay: int = 5000):
     # Disable backpressure on input
     tb.x_resp.enqueue(StreamBackpressure(ready=True))

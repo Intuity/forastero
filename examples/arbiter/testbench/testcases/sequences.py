@@ -52,10 +52,10 @@ async def burst_on_a_only(
 
 
 @Testbench.testcase(timeout=100000)
-@Testbench.parameter("single_pkts")
-@Testbench.parameter("burst_count")
-@Testbench.parameter("burst_min")
-@Testbench.parameter("burst_max")
+@Testbench.parameter("single_pkts", int)
+@Testbench.parameter("burst_count", int)
+@Testbench.parameter("burst_min", int)
+@Testbench.parameter("burst_max", int)
 async def random_seq(
     tb: Testbench,
     log: SimLog,
