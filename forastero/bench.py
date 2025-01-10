@@ -40,6 +40,16 @@ from .scoreboard import Scoreboard
 from .sequence import BaseSequence, SeqArbiter
 
 
+def strtobool(val: str):
+    lval = val.strip().lower()
+    if lval in (truthy := ("y", "yes", "t", "true", "on", "1")):
+        return True
+    elif lval in (falsey := ("n", "no", "f", "false", "off", "0")):
+        return False
+    else:
+        raise ValueError(f"Invalid bool `{val}`, specify using one of" f" `{truthy}` or `{falsey}`")
+
+
 class BaseBench:
     """
     Base class for a Forastero testbench
@@ -52,7 +62,7 @@ class BaseBench:
     :param clk_units:  Units of the primary clock's period
     """
 
-    TEST_REQ_PARAMS: ClassVar[dict[str, set[str]]] = defaultdict(set)
+    TEST_REQ_PARAMS: ClassVar[dict[Any, list[tuple[str, Callable[[str], Any]]]]] = defaultdict(list)
     PARAM_FILE_PATH: ClassVar[str] = os.environ.get("TEST_PARAMS", None)
     PARAM_DEFAULTS: ClassVar[dict[str, Any]] = {
         # Random seed
@@ -430,15 +440,22 @@ class BaseBench:
                     # Are there any parameters for this test?
                     raw_tc_params = cls.get_parameter("testcases")
                     params = {}
-                    for key in cls.TEST_REQ_PARAMS[self._func]:
+                    for key, cast in cls.TEST_REQ_PARAMS[self._func]:
                         # First look for "<TESTCASE_NAME>.<PARAMETER_NAME>"
-                        if (value := raw_tc_params.get(f"{tc_name}.{key}", None)) is not None:
-                            log.debug(f"Parameter {key}={value}")
-                            params[key] = value
-                        # Fall back to just the parameter name
-                        elif (value := raw_tc_params.get(key, None)) is not None:
-                            log.debug(f"Parameter {key}={value}")
-                            params[key] = value
+                        # but fall back to just "<PARAMETER_NAME>"
+                        value = raw_tc_params.get(f"{tc_name}.{key}", raw_tc_params.get(key, None))
+                        if value is None:
+                            continue
+
+                        # Cast string values to the appropriate type
+                        if isinstance(value, str) and cast is not str:
+                            if cast is bool:
+                                value = strtobool(value)
+                            else:
+                                value = cast(value)
+
+                        log.debug(f"Parameter {key}={value}")
+                        params[key] = value
 
                     # Declare an intermediate function (this allows us to wrap
                     # with a optional timeout)
@@ -492,17 +509,21 @@ class BaseBench:
         return _do_decorate
 
     @classmethod
-    def parameter(cls, name: str) -> Callable:
+    def parameter(cls, name: str, cast: Callable[[str], Any]) -> Callable:
         """
         Decorator for defining a parameter of a testcase that can be overridden
         from a parameter file identified by the `TEST_PARAMS` environment
         variable.
 
         :param name: Name of the parameter
+        :param name: Function to cast a string param to the required type,
+                     usually just the type constructor e.g. `int`, `float`.
+                     As a special case `bool` will match intuitively based
+                     on string content, e.g. `True, y, False, NO, 1, 0, off`.
         """
 
         def _inner(method: Callable) -> Callable:
-            cls.TEST_REQ_PARAMS[method].add(name)
+            cls.TEST_REQ_PARAMS[method].append((name, cast))
             return method
 
         return _inner

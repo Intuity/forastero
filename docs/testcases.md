@@ -52,9 +52,9 @@ from cocotb.log import SimLog
 from ..testbench import Testbench
 
 @Testbench.testcase()
-@Testbench.parameter("num_packets")
-@Testbench.parameter("packet_min_len")
-@Testbench.parameter("packet_max_len")
+@Testbench.parameter("num_packets", int)
+@Testbench.parameter("packet_min_len", int)
+@Testbench.parameter("packet_max_len", int)
 async def inject_packets(tb : Testbench,
                          log: SimLog,
                          num_packets: int = 100,
