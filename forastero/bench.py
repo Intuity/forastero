@@ -42,12 +42,12 @@ from .sequence import BaseSequence, SeqArbiter
 
 def strtobool(val: str):
     lval = val.strip().lower()
-    if lval in ("y", "yes", "t", "true", "on", "1"):
+    if lval in (truthy := ("y", "yes", "t", "true", "on", "1")):
         return True
-    elif lval in ("n", "no", "f", "false", "off", "0"):
+    elif lval in (falsey := ("n", "no", "f", "false", "off", "0")):
         return False
     else:
-        raise ValueError(f"Invalid bool `{val}`")
+        raise ValueError(f"Invalid bool `{val}`, specify using one of" f" `{truthy}` or `{falsey}`")
 
 
 class BaseBench:
@@ -516,6 +516,10 @@ class BaseBench:
         variable.
 
         :param name: Name of the parameter
+        :param name: Function to cast a string param to the required type,
+                     usually just the type constructor e.g. `int`, `float`.
+                     As a special case `bool` will match intuitively based
+                     on string content, e.g. `True, y, False, NO, 1, 0, off`.
         """
 
         def _inner(method: Callable) -> Callable:
