@@ -12,13 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 from collections.abc import Callable
 from typing import Any
+
 import cocotb
 from cocotb.log import SimLog
 from cocotb.triggers import Event, First, Lock, RisingEdge, Timer
 from cocotb.utils import get_sim_time
-import logging
 
 from .monitor import BaseMonitor, MonitorEvent
 from .transaction import BaseTransaction
