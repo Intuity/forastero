@@ -222,7 +222,6 @@ class BaseBench:
         name: str,
         comp_or_coro: Component | Coroutine = None,
         scoreboard: bool = True,
-        scoreboard_verbose: bool = False,
         scoreboard_queues: list[str] | None = None,
         scoreboard_filter: Callable | None = None,
         scoreboard_timeout_ns: int | None = None,
@@ -239,9 +238,6 @@ class BaseBench:
         :param comp_or_coro:          Component instance or coroutine
         :param scoreboard:            Only applies to monitors, controls whether
                                       it is registered with the scoreboard
-        :param scoreboard_verbose:    Only applies to scoreboarded monitors,
-                                      controls whether to log each transaction,
-                                      even when they don't mismatch
         :param scoreboard_queues:     A list of named queues used when a funnel
                                       type scoreboard channel is required
         :param scoreboard_filter:     A function that can filter or modify items
@@ -269,7 +265,6 @@ class BaseBench:
             if scoreboard and isinstance(comp_or_coro, BaseMonitor):
                 self.scoreboard.attach(
                     comp_or_coro,
-                    verbose=scoreboard_verbose,
                     filter_fn=scoreboard_filter,
                     queues=scoreboard_queues,
                     timeout_ns=scoreboard_timeout_ns,
