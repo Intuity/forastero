@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 from collections.abc import Callable
 from typing import Any
 
@@ -449,7 +450,6 @@ class Scoreboard:
     def attach(
         self,
         monitor: BaseMonitor,
-        verbose=False,
         filter_fn: Callable | None = None,
         queues: list[str] | tuple[str] | None = None,
         timeout_ns: int | None = None,
@@ -460,7 +460,6 @@ class Scoreboard:
         channel in the process.
 
         :param monitor:    The monitor to attach
-        :param verbose:    Whether to tabulate matches as well as mismatches
         :param queues:     List of reference queue names, this causes a funnel
                            type scoreboard channel to be used
         :param filter_fn:  A filter function that can either drop or modify items
@@ -492,7 +491,7 @@ class Scoreboard:
                 polling_ns=polling_ns,
             )
         self.channels[channel.name] = channel
-        if verbose:
+        if self.log.getEffectiveLevel() <= logging.DEBUG:
             cocotb.start_soon(channel.loop(self._mismatch, self._match))
         else:
             cocotb.start_soon(channel.loop(self._mismatch))
@@ -537,16 +536,16 @@ class Scoreboard:
     ) -> None:
         """
         Callback whenever a channel detects a match between captured and
-        reference objects, only called if monitor attached with `verbose`.
+        reference objects, only called if monitor attached with DEBUG verbosity.
 
         :param channel:   The channel reporting the mismatch
         :param monitor:   The transaction captured by a monitor
         :param reference: The reference transaction produced by a model
         """
-        self.log.info(
+        self.log.debug(
             f"Match on channel {channel.monitor.name} for transaction index " f"{channel.total-1}"
         )
-        self.log.info(monitor.tabulate(reference))
+        self.log.debug(monitor.tabulate(reference))
 
     @property
     def result(self) -> bool:
