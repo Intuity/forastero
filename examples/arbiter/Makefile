@@ -36,6 +36,7 @@ MODULE   = testbench
 ACCUM_PY_PATH += $(PYTHONPATH)
 ACCUM_PY_PATH += $(THIS_DIR)
 ACCUM_PY_PATH += $(abspath $(THIS_DIR)/..)
+ACCUM_PY_PATH += $(abspath $(THIS_DIR)/../..)
 export PYTHONPATH := $(subst $(SPACE),:,$(ACCUM_PY_PATH))
 
 # Parameters file

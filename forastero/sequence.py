@@ -14,6 +14,7 @@
 
 import contextlib
 import itertools
+import logging
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from enum import Enum, auto
@@ -303,6 +304,7 @@ class SeqArbiter:
 
     def __init__(self, log: SimLog, random: Random):
         self._log = log
+        self._debug = log.getEffectiveLevel() <= logging.DEBUG
         self._random = Random(random.random())
         self._queue = []
         self._evt_queue = Event()
@@ -316,47 +318,32 @@ class SeqArbiter:
         :param context: The sequence context queueing
         :param locks:   The list of locks required
         """
-        self._log.debug(
-            f"Sequence context {context.id} began queueing for: "
-            + ", ".join(x._name for x in locks)
-        )
         # Queue up the context, locks it requests, and the stall event
         self._queue.append((context, locks, evt := Event()))
         # Mark a new entry as having been pushed
         self._evt_queue.set()
         # Wait for the event
         await evt.wait()
-        # Log that the sequence has been released
-        self._log.debug(
-            f"Sequence context {context.id} has finished queueing for: "
-            + ", ".join(x._name for x in locks)
-        )
 
     async def _manage(self) -> None:
         """Executes in a loop to schedule sequences"""
-        log = self._log.getChild("schedule")
         for idx in itertools.count():
             # Wait until something is queued up
             await self._evt_queue.wait()
-            # Log scheduling is starting
-            log.debug(f"Starting scheduling pass {idx} with {SeqLock.count_all_locks()} locks")
             # While stuff is queued, attempt to schedule it
             while self._queue:
                 # Keep track of which locks are available
                 available = {x for x in SeqLock.get_all_locks() if not x.locked}
                 # If no locks are available, wait for the next release
                 if not available:
-                    log.debug("Waiting for the next release (none available)")
                     await SeqContext.SEQ_SHARED_EVENT.wait_for(SeqContextEvent.UNLOCKED)
                     continue
                 # Randomise the order to process the queue
                 order = list(range(len(self._queue)))
                 self._random.shuffle(order)
+                # Log the scheduling problem
+                pre_queue, pre_free = len(self._queue), available.copy()
                 # Schedule as many sequences as possible
-                log.debug(
-                    f"Attempting to schedule {len(self._queue)} sequences "
-                    f"with {len(available)} available locks"
-                )
                 scheduled = []
                 for idx in order:
                     # Pickup the entry
@@ -375,7 +362,22 @@ class SeqArbiter:
                     # If no more locks are available, break out early
                     if not available:
                         break
-                log.debug(f"Scheduled {len(scheduled)} sequences, {len(locks)} locks remain")
+                # Log what was scheduled when in debug mode
+                if self._debug and (post_sched := len(scheduled)) > 0:
+                    post_claim, post_diff = locks[:], pre_free.difference(locks)
+                    msg = (
+                        f"Scheduled {post_sched} "
+                        f"({', '.join(self._queue[x][0].id for x in scheduled)}) "
+                        f"out of {pre_queue} sequences, claiming {len(post_claim)} "
+                        f"({', '.join(x._name for x in post_claim)}) locks"
+                    )
+                    if len(post_diff) > 0:
+                        self._log.debug(
+                            f"{msg} leaving {len(post_diff)} "
+                            f"({', '.join(x._name for x in post_diff)})"
+                        )
+                    else:
+                        self._log.debug(msg)
                 # Prune the scheduled sequences
                 self._queue = [x for i, x in enumerate(self._queue) if i not in scheduled]
                 # If scheduling was unsuccessful then either wait for locks to
@@ -385,15 +387,12 @@ class SeqArbiter:
                 #       initial "order" is determined. This is why the code below
                 #       only waits if no sequences were successfully scheduled.
                 if not scheduled:
-                    log.debug("Waiting for a release or a sequence to be scheduled")
                     # Clear trigger event so that the next queue_for raises it
                     self._evt_queue.clear()
                     await First(
                         SeqContext.SEQ_SHARED_EVENT.get_wait_event(SeqContextEvent.UNLOCKED).wait(),
                         self._evt_queue.wait(),
                     )
-            # Log at the end of this pass
-            log.debug(f"Finished scheduling pass {idx}")
             # Clear the trigger event so that the next queue_for call retriggers
             # the scheduling routine
             self._evt_queue.clear()
@@ -465,7 +464,6 @@ class SeqContext:
         # Yield to allow the sequence to execute
         yield
         # Release any remaining locks
-        self.log.debug(f"Releasing {len(lockables)} locks: " + ", ".join(x._name for x in need))
         for lock in need:
             if lock._locked_by is self:
                 lock.release(self)

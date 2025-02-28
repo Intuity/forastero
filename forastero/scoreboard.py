@@ -475,7 +475,7 @@ class Scoreboard:
             channel = FunnelChannel(
                 monitor.name,
                 monitor,
-                self.tb.fork_log("channel", monitor.name),
+                self.tb.fork_log("scoreboard", "channel", monitor.name),
                 filter_fn,
                 queues,
                 timeout_ns=timeout_ns,
@@ -485,7 +485,7 @@ class Scoreboard:
             channel = Channel(
                 monitor.name,
                 monitor,
-                self.tb.fork_log("channel", monitor.name),
+                self.tb.fork_log("scoreboard", "channel", monitor.name),
                 filter_fn,
                 timeout_ns=timeout_ns,
                 polling_ns=polling_ns,

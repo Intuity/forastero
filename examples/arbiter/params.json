@@ -1,7 +1,7 @@
 {
     "verbosity": {
         "tb": "info",
-        "tb.arbiter": "info"
+        "tb.int.seq": "info"
     },
     "seed": 1234,
     "fail_fast": true,

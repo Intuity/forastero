@@ -8,8 +8,8 @@ the behaviour of testcases, an example of its structure is shown below:
     "seed": 1234,
     "verbosity": {
         "tb": "info",
-        "tb.orchestration": "debug",
-        "tb.testcase.my_testcase": "warning"
+        "tb.int": "debug",
+        "tb.test.my_testcase": "warning"
     },
     "profiling": "/path/to/store/profiling.stats",
     "fail_fast": true,
@@ -23,9 +23,9 @@ the behaviour of testcases, an example of its structure is shown below:
  * `seed` - sets the random number seeding value for the `tb.random` instance;
  * `verbosity` - control the verbosity of different logging hierarchies:
    * `tb` - sets the global verbosity;
-   * `tb.orchestration` - sets the verbosity of Forastero's internal orchestration
-     methods (i.e. those controlling test setup and teardown);
-   * `tb.testcase.my_testcase` - sets the verbosity for a given testcase;
+   * `tb.int` - sets the verbosity of Forastero's internal orchestration and
+     scheduling methods (i.e. those controlling test setup and teardown);
+   * `tb.test.my_testcase` - sets the verbosity for a given testcase;
    * More information can be found in the [logging](./logging.md) documentation.
  * `profiling` - when included this enables [YAPPI](https://pypi.org/project/yappi/)
    profiling of the testbench and writes the profiling data to the given file

@@ -116,7 +116,7 @@ class BaseBench:
             logging.getLogger(hierarchy).setLevel(getattr(logging, verbosity.upper()))
         # Create a child log for orchestration
         # NOTE: This should really only be used by internal testbench processes
-        self._orch_log = self.fork_log("orchestration")
+        self._orch_log = self.fork_log("int", "orch")
         # Create a scoreboard
         self.scoreboard = Scoreboard(
             tb=self,
@@ -132,7 +132,7 @@ class BaseBench:
         self.info(f"Bench initialised with random seed {self.seed}")
         self.random = random.Random(self.seed)
         # Sequence handling
-        self._arbiter = SeqArbiter(self.fork_log("arbiter"), self.random)
+        self._arbiter = SeqArbiter(self.fork_log("int", "seq"), self.random)
         self._sequences = []
         # Events
         self.evt_ready = Event()
@@ -285,7 +285,7 @@ class BaseBench:
         """
         task = cocotb.start_soon(
             sequence(
-                self.fork_log("sequence"),
+                self.fork_log("seq"),
                 self.random,
                 self._arbiter,
                 self.clk,
@@ -430,7 +430,7 @@ class BaseBench:
                         await comp.ready()
 
                     # Create a forked log
-                    log = tb.fork_log("testcase", tc_name)
+                    log = tb.fork_log("test", tc_name)
 
                     # Are there any parameters for this test?
                     raw_tc_params = cls.get_parameter("testcases")
