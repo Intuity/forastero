@@ -8,10 +8,8 @@ is in itself an extension of Python's built-in
 Forastero provides the following levels of hierarchy:
 
  * `tb` - the root of the logging hierarchy;
- * `tb.orchestration` - used for log messages to do with testbench sequencing
-   (e.g. used when draining different drivers and monitors at the end of a test);
  * `tb.scoreboard` - used for messages emitted from the scoreboard;
- * `tb.scoreboard.channels.<X>` - used for messages emitted from a particular
+ * `tb.scoreboard.channel.<X>` - used for messages emitted from a particular
    scoreboard channel;
  * `tb.driver.<X>` - used for messages emitted from a particular driver (when
    extending from [BaseDriver](./classes/driver.md));
@@ -19,9 +17,15 @@ Forastero provides the following levels of hierarchy:
    extending from [BaseMonitor](./classes/monitor.md));
  * `tb.io.<X>` - used for messages emitted from a particular I/O wrapper class
    (when extending from [BaseIO](./classes/io.md));
- * `tb.testcase.<X>` - used for messages emitted from a particular testcase;
- * `tb.arbiter` - used for messages emitted from the sequencing arbiter;
- * `tb.sequence.<X>` - used for messages emitted from a specific sequence.
+ * `tb.test.<X>` - used for messages emitted from a particular testcase;
+ * `tb.seq.<X>` - used for messages emitted from a specific sequence;
+ * `tb.int` - is used for internal messages from the framework to do with the
+   control and sequencing of tests:
+   * `tb.int.orch` - used for log messages to do with testbench orchestration
+     (e.g. used when draining different drivers and monitors at the end of a
+     test);
+   * `tb.int.seq` - used for internal messages related to sequence scheduling,
+     arbitration, and execution.
 
 These logging contexts are created using the `fork_log` method of
 [BaseBench](./classes/bench.md). If you want to introduce custom layers of
