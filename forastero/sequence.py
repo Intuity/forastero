@@ -15,6 +15,9 @@
 import contextlib
 import itertools
 import logging
+
+# TODO @intuity: Changed from using cocotb's Lock as it causes a crash when
+#                acquired - I'm not sure if there's a downside to this?
 from asyncio import Lock
 from collections import defaultdict
 from collections.abc import Callable, Iterable
