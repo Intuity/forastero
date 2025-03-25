@@ -14,13 +14,17 @@
 
 import dataclasses
 from enum import Enum, auto
+from random import Random
+from typing import Any
 
 import cocotb
+from cocotb.handle import ModifiableObject
 from cocotb.queue import Queue
 from cocotb.triggers import Event, RisingEdge
 from cocotb.utils import get_sim_time
 
 from .component import Component
+from .io import BaseIO
 from .transaction import BaseTransaction
 
 
@@ -47,8 +51,17 @@ class BaseDriver(Component):
     :param name:    Unique name for this component instance (optional)
     """
 
-    def __init__(self, *args, **kwds) -> None:
-        super().__init__(*args, **kwds)
+    def __init__(
+        self,
+        tb: Any,
+        io: BaseIO,
+        clk: ModifiableObject,
+        rst: ModifiableObject,
+        random: Random | None = None,
+        name: str | None = None,
+        blocking: bool = True,
+    ) -> None:
+        super().__init__(tb, io, clk, rst, random, name, blocking)
         self.stats = DriverStatistics()
         self._queue: Queue[BaseTransaction] = Queue()
         cocotb.start_soon(self._driver_loop())

@@ -15,11 +15,15 @@
 import dataclasses
 from collections.abc import Callable
 from enum import Enum, auto
+from random import Random
+from typing import Any
 
 import cocotb
+from cocotb.handle import ModifiableObject
 from cocotb.triggers import RisingEdge
 
 from .component import Component
+from .io import BaseIO
 from .transaction import BaseTransaction
 
 
@@ -45,8 +49,17 @@ class BaseMonitor(Component):
     :param name:    Unique name for this component instance (optional)
     """
 
-    def __init__(self, *args, **kwds) -> None:
-        super().__init__(*args, **kwds)
+    def __init__(
+        self,
+        tb: Any,
+        io: BaseIO,
+        clk: ModifiableObject,
+        rst: ModifiableObject,
+        random: Random | None = None,
+        name: str | None = None,
+        blocking: bool = True,
+    ) -> None:
+        super().__init__(tb, io, clk, rst, random, name, blocking)
         self.stats = MonitorStatistics()
         cocotb.start_soon(self._monitor_loop())
 
