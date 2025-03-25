@@ -185,11 +185,12 @@ class BaseBench:
             comp.io.initialise(IORole.opposite(comp.io.role))
 
     async def reset(self, init=True, wait_during=20, wait_after=1) -> None:
-        """Reset the DUT.
+        """
+        Reset the DUT.
 
-        :param init       : Initialise the DUT's I/O
+        :param init:        Initialise the DUT's I/O
         :param wait_during: Clock cycles to hold reset active for (defaults to 20)
-        :param wait_after : Clock cycles to wait after lowering reset (defaults to 1)
+        :param wait_after:  Clock cycles to wait after lowering reset (defaults to 1)
         """
         # Drive reset high
         self.rst.value = 1
@@ -370,10 +371,10 @@ class BaseBench:
         :param timeout:           Maximum run time for a test (in clock cycles)
         :param shutdown_loops:    Number of loops of the shutdown sequence
         :param shutdown_delay:    Delay between loops of the shutdown sequence
-        :param reset_init       : Initialise the DUT's I/O
+        :param reset_init:        Initialise the DUT's I/O
         :param reset_wait_during: Clock cycles to hold reset active for
                                   (defaults to 20)
-        :param reset_wait_after : Clock cycles to wait after lowering reset
+        :param reset_wait_after:  Clock cycles to wait after lowering reset
                                   (defaults to 1)
         """
 
@@ -511,7 +512,7 @@ class BaseBench:
         variable.
 
         :param name: Name of the parameter
-        :param name: Function to cast a string param to the required type,
+        :param cast: Function to cast a string param to the required type,
                      usually just the type constructor e.g. `int`, `float`.
                      As a special case `bool` will match intuitively based
                      on string content, e.g. `True, y, False, NO, 1, 0, off`.
