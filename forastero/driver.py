@@ -13,8 +13,9 @@
 # limitations under the License.
 
 import dataclasses
-from enum import Any, Enum, auto
+from enum import Enum, auto
 from random import Random
+from typing import Any
 
 import cocotb
 from cocotb.handle import ModifiableObject
