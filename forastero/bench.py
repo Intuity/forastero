@@ -40,14 +40,14 @@ from .scoreboard import Scoreboard
 from .sequence import BaseSequence, SeqArbiter
 
 
-def strtobool(val: str):
+def strtobool(val: str) -> bool:
     lval = val.strip().lower()
     if lval in (truthy := ("y", "yes", "t", "true", "on", "1")):
         return True
     elif lval in (falsey := ("n", "no", "f", "false", "off", "0")):
         return False
     else:
-        raise ValueError(f"Invalid bool `{val}`, specify using one of" f" `{truthy}` or `{falsey}`")
+        raise ValueError(f"Invalid bool `{val}`, specify using one of `{truthy}` or `{falsey}`")
 
 
 class BaseBench:

@@ -19,9 +19,9 @@ takes a different view to how the testbench and its various components interact.
 
 Forastero provides a way to write testbenches where common drivers and monitors
 are defined and attached to the design in a class, rather than as part of each
-test sequence. This is subtly different to the recommendations laid out in
+test sequence. This is different to the recommendations laid out in
 [cocotb's documentation](https://docs.cocotb.org/en/stable/quickstart.html), but
-leads to less code duplcation and makes it faster to add new tests.
+leads to less code duplication and makes it faster to add new tests.
 
 For example, the following code defines a testbench with a driver attached to a
 stream input port of the design:
@@ -65,7 +65,7 @@ been named - specifically:
  * Finally the port name ends with its component, for example `i_stream_data`.
 
 If your design names signals in a different way, then you can use a
-[custom naming style](./components.md#io-naming-style) to override globally or on a
+[custom naming style](./components/io.md#io-naming-style) to override globally or on a
 case-by-case basis.
 
 If you were to use the default `io_prefix_style`, then your design would need to

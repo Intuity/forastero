@@ -12,11 +12,11 @@ Forastero provides the following levels of hierarchy:
  * `tb.scoreboard.channel.<X>` - used for messages emitted from a particular
    scoreboard channel;
  * `tb.driver.<X>` - used for messages emitted from a particular driver (when
-   extending from [BaseDriver](./classes/driver.md));
+   extending from [BaseDriver](./components/driver.md));
  * `tb.monitor.<X>` - used for messages emitted from a particular monitor (when
-   extending from [BaseMonitor](./classes/monitor.md));
+   extending from [BaseMonitor](./components/monitor.md));
  * `tb.io.<X>` - used for messages emitted from a particular I/O wrapper class
-   (when extending from [BaseIO](./classes/io.md));
+   (when extending from [BaseIO](./components/io.md));
  * `tb.test.<X>` - used for messages emitted from a particular testcase;
  * `tb.seq.<X>` - used for messages emitted from a specific sequence;
  * `tb.int` - is used for internal messages from the framework to do with the
@@ -28,7 +28,7 @@ Forastero provides the following levels of hierarchy:
      arbitration, and execution.
 
 These logging contexts are created using the `fork_log` method of
-[BaseBench](./classes/bench.md). If you want to introduce custom layers of
+[BaseBench](./testbench.md). If you want to introduce custom layers of
 hierarchy, then you should similarly call `fork_log` with your logging context
 e.g.:
 

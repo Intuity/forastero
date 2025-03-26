@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+from collections import defaultdict
 from collections.abc import Callable
 from typing import Any
 
@@ -30,6 +31,10 @@ class QueueEmptyError(Exception):
 
 
 class ChannelTimeoutError(AssertionError):
+    pass
+
+
+class WindowResidenceError(AssertionError):
     pass
 
 
@@ -145,6 +150,7 @@ class Channel:
         self._lock = Lock()
         self._matched = 0
         self._mismatched = 0
+        self._residence = defaultdict(lambda: 0)
 
         def _sample(mon: BaseMonitor, evt: MonitorEvent, obj: BaseTransaction) -> None:
             if mon is self.monitor and evt is MonitorEvent.CAPTURE:
@@ -217,16 +223,29 @@ class Channel:
         # If matching window is 1, wait for the first reference transaction
         if self.match_window == 1:
             next_ref = await self._q_ref.pop()
-        # If matching window > 1, peek at the captured transaction and search
-        # ahead the next N transactions
+        # If matching window > 1,
         else:
+            # Peek at the captured transaction and search the next N transactions
             peek_mon = self._q_mon[0]
             next_ref = None
             while next_ref is None:
                 # Search within the match window
                 for idx, peek_ref in enumerate(self._q_ref[: self.match_window]):
+                    # Track how many cycles this item has been present in the matching window
+                    self._residence[id(peek_ref)] += 1
+                    # Check if this item has been in the matching window too long?
+                    if self._residence[id(peek_ref)] > self.match_window:
+                        raise WindowResidenceError(
+                            f"Item has been present in the matching window of scoreboard "
+                            f"channel {self.name} for longer than the window length of "
+                            f"{self.match_window}: {peek_ref}"
+                        )
+                    # If the reference and monitor transactions match...
                     if peek_ref == peek_mon:
+                        # ...pop the reference transaction and...
                         next_ref = await self._q_ref.pop(idx)
+                        # ...stop tracking its residence time
+                        del self._residence[id(peek_ref)]
                         break
                 # If no match found...
                 else:

@@ -1,0 +1,16 @@
+{
+    "verbosity": {
+        "tb": "info",
+        "tb.int.seq": "info"
+    },
+    "seed": 1234,
+    "fail_fast": true,
+    "testcases": {
+        "random.packets": 500,
+        "random.delay": 6000,
+        "random_seq.single_pkts": 2000,
+        "random_seq.burst_count": 10,
+        "random_seq.burst_min": 100,
+        "random_seq.burst_max": 500
+    }
+}

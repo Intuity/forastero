@@ -26,7 +26,7 @@ PLUSARGS      += +WAVE_FILE=dump.vcd
 COMPILE_ARGS  += $(addprefix -D ,$(DEFINES))
 
 # Design sources
-VERILOG_SOURCES += $(abspath arbiter.sv)
+VERILOG_SOURCES += $(abspath ../common/rtl/arbiter.sv)
 
 # Design top-level and testbench module
 TOPLEVEL = arbiter

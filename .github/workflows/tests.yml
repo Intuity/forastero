@@ -28,8 +28,13 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install poetry
           poetry install --with dev
-      - name : Run Arbiter Example
+      - name : Run Arbiter Strict Example
         shell: bash
         run  : |
-          cd examples/arbiter
+          cd examples/arbiter_strict
+          poetry run make
+      - name : Run Arbiter Window Example
+        shell: bash
+        run  : |
+          cd examples/arbiter_window
           poetry run make

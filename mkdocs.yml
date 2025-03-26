@@ -30,18 +30,16 @@ markdown_extensions:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:materialx.emoji.to_svg
 nav:
-  - Welcome: "index.md"
-  - Components: "components.md"
-  - Logging: "logging.md"
-  - Parameters: "parameters.md"
-  - Sequences: "sequences.md"
-  - Testcases: "testcases.md"
-  - API Reference:
-    - IO: "classes/io.md"
-    - Transactions: "classes/transaction.md"
-    - Components: "classes/component.md"
-    - BaseDriver: "classes/driver.md"
-    - BaseMonitor: "classes/monitor.md"
-    - Sequences: "classes/sequences.md"
-    - Scoreboards: "classes/scoreboard.md"
-    - Testbenches: "classes/bench.md"
+  - Welcome: index.md
+  - Testbench: testbench.md
+  - Components:
+    - Introduction: components/index.md
+    - Interfaces: components/io.md
+    - Transactions: components/transaction.md
+    - Drivers: components/driver.md
+    - Monitors: components/monitor.md
+  - Logging: logging.md
+  - Parameters: parameters.md
+  - Sequences: sequences.md
+  - Scoreboards: scoreboard.md
+  - Testcases: testcases.md
