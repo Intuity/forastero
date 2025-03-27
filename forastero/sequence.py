@@ -390,7 +390,9 @@ class SeqArbiter:
                     # Clear trigger event so that the next queue_for raises it
                     self._evt_queue.clear()
                     await First(
-                        SeqContext.SEQ_SHARED_EVENT.get_wait_event(SeqContextEvent.UNLOCKED).wait(),
+                        SeqContext.SEQ_SHARED_EVENT._get_wait_event(
+                            SeqContextEvent.UNLOCKED
+                        ).wait(),
                         self._evt_queue.wait(),
                     )
             # Clear the trigger event so that the next queue_for call retriggers
@@ -661,7 +663,7 @@ class BaseSequence:
                 await self._fn(ctx, **comps, **locks, **arguments)
 
         # Return wrapped coroutine
-        return _inner
+        return self, _inner
 
 
 def sequence(auto_lock: bool = False) -> BaseSequence:

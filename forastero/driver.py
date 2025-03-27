@@ -29,8 +29,12 @@ from .transaction import BaseTransaction
 
 
 class DriverEvent(Enum):
+    ENQUEUE = auto()
+    """Emitted when a transaction is enqueued to a driver"""
     PRE_DRIVE = auto()
+    """Emitted just prior to a queued transaction being driven into the DUT"""
     POST_DRIVE = auto()
+    """Emitted just after a queued transaction has been driven into the DUT"""
 
 
 @dataclasses.dataclass()
@@ -89,7 +93,7 @@ class BaseDriver(Component):
         # Sanity check
         if not isinstance(transaction, BaseTransaction):
             raise TypeError(
-                f"Transaction objects should inherit from " f"BaseTransaction unlike {transaction}"
+                f"Transaction objects should inherit from BaseTransaction unlike {transaction}"
             )
         # Does this transaction need an event?
         if wait_for is not None:
@@ -97,6 +101,10 @@ class BaseDriver(Component):
             transaction._c_event = Event()
         # Queue up the transaction with no delay
         self._queue.put_nowait(transaction)
+        # Notify any enqueue subscribers
+        self.publish(DriverEvent.ENQUEUE, transaction)
+        if transaction._f_event is DriverEvent.ENQUEUE:
+            transaction._c_event.set()
         # Return the cocotb Event (if it was set)
         return transaction._c_event
 

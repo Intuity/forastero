@@ -40,14 +40,14 @@ from .scoreboard import Scoreboard
 from .sequence import BaseSequence, SeqArbiter
 
 
-def strtobool(val: str):
+def strtobool(val: str) -> bool:
     lval = val.strip().lower()
     if lval in (truthy := ("y", "yes", "t", "true", "on", "1")):
         return True
     elif lval in (falsey := ("n", "no", "f", "false", "off", "0")):
         return False
     else:
-        raise ValueError(f"Invalid bool `{val}`, specify using one of" f" `{truthy}` or `{falsey}`")
+        raise ValueError(f"Invalid bool `{val}`, specify using one of `{truthy}` or `{falsey}`")
 
 
 class BaseBench:
@@ -227,6 +227,7 @@ class BaseBench:
         scoreboard_filter: Callable | None = None,
         scoreboard_timeout_ns: int | None = None,
         scoreboard_polling_ns: int = 100,
+        scoreboard_match_window: int = 1,
     ) -> Component | Coroutine:
         """
         Register a driver, monitor, or coroutine with the testbench. Drivers and
@@ -235,22 +236,27 @@ class BaseBench:
         the scoreboard unless explicitly requested. Coroutines must also be named
         and are required to complete before the test will shutdown.
 
-        :param name:                  Name of the component or coroutine
-        :param comp_or_coro:          Component instance or coroutine
-        :param scoreboard:            Only applies to monitors, controls whether
-                                      it is registered with the scoreboard
-        :param scoreboard_queues:     A list of named queues used when a funnel
-                                      type scoreboard channel is required
-        :param scoreboard_filter:     A function that can filter or modify items
-                                      recorded by the monitor before they are
-                                      passed to the scoreboard
-        :param scoreboard_timeout_ns: Optional timeout to allow for a object sat
-                                      at the front of the monitor queue to remain
-                                      unmatched (in nanoseconds, a value of None
-                                      disables the timeout mechanism)
-        :param scoreboard_polling_ns: How frequently to poll to check for unmatched
-                                      items stuck in the monitor queue in nanoseconds
-                                      (defaults to 100 ns)
+        :param name:                    Name of the component or coroutine
+        :param comp_or_coro:            Component instance or coroutine
+        :param scoreboard:              Only applies to monitors, controls whether
+                                        it is registered with the scoreboard
+        :param scoreboard_queues:       A list of named queues used when a funnel
+                                        type scoreboard channel is required
+        :param scoreboard_filter:       A function that can filter or modify items
+                                        recorded by the monitor before they are
+                                        passed to the scoreboard
+        :param scoreboard_timeout_ns:   Optional timeout to allow for a object sat
+                                        at the front of the monitor queue to remain
+                                        unmatched (in nanoseconds, a value of None
+                                        disables the timeout mechanism)
+        :param scoreboard_polling_ns:   How frequently to poll to check for unmatched
+                                        items stuck in the monitor queue in nanoseconds
+                                        (defaults to 100 ns)
+        :param scoreboard_match_window: Where precise ordering of expected transactions
+                                        is not known, a positive integer matching window
+                                        can be used to match any of the next N
+                                        transactions in the reference queue (where N is
+                                        set by match_window)
         """
         assert isinstance(name, str), f"Name must be a string '{name}'"
         if asyncio.iscoroutine(comp_or_coro):
@@ -270,12 +276,20 @@ class BaseBench:
                     queues=scoreboard_queues,
                     timeout_ns=scoreboard_timeout_ns,
                     polling_ns=scoreboard_polling_ns,
+                    match_window=scoreboard_match_window,
                 )
         else:
             raise TypeError(f"Unsupported object: {comp_or_coro}")
         return comp_or_coro
 
-    def schedule(self, sequence: BaseSequence, blocking: bool = True) -> Task:
+    def schedule(
+        self,
+        sequence: tuple[
+            BaseSequence,
+            Callable[[SimLog, random.Random, SeqArbiter, ModifiableObject, ModifiableObject], None],
+        ],
+        blocking: bool = True,
+    ) -> Task:
         """
         Schedule a sequence to execute as part of a testcase.
 
@@ -284,8 +298,9 @@ class BaseBench:
                          allowed to finish
         :returns:        The scheduled task
         """
+        seq_def, seq_inner = sequence
         task = cocotb.start_soon(
-            sequence(
+            seq_inner(
                 self.fork_log("seq"),
                 self.random,
                 self._arbiter,
@@ -294,7 +309,7 @@ class BaseBench:
             )
         )
         if blocking:
-            self._sequences.append(task)
+            self._sequences.append((seq_def, task))
         return task
 
     def add_teardown(self, coro: Coroutine) -> None:
@@ -327,8 +342,9 @@ class BaseBench:
             self._orch_log.info(f"Shutdown loop ({loop_idx+1}/{loops})")
             # Wait for sequences to complete
             self._orch_log.debug(f"Waiting for {len(self._sequences)} sequences to complete")
-            for sequence in self._sequences:
-                await sequence
+            for seq_def, seq_task in self._sequences:
+                self._orch_log.debug(f"Waiting for sequence {seq_def.name}")
+                await seq_task
             # Wait for minimum delay
             self._orch_log.debug("Waiting for minimum delay")
             await ClockCycles(self.clk, delay)
@@ -387,9 +403,7 @@ class BaseBench:
                     try:
                         tb = cls(dut)
                     except Exception as e:
-                        dut._log.error(
-                            f"Caught exception during {cls.__name__} constuction: " f"{e}"
-                        )
+                        dut._log.error(f"Caught exception during {cls.__name__} constuction: {e}")
                         dut._log.error(traceback.format_exc())
                         raise e
                     # Log what's going on
