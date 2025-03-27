@@ -31,7 +31,7 @@ markdown_extensions:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:materialx.emoji.to_svg
 nav:
-  - Welcome: index.md
+  - Forastero: index.md
   - Testbench: testbench.md
   - Components:
     - Introduction: components/index.md
