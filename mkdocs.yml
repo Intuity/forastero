@@ -3,9 +3,10 @@ repo_name: intuity/forastero
 repo_url: https://github.com/intuity/forastero
 theme:
   name: material
+  logo: assets/logo.svg
   palette:
     scheme: slate
-    primary: teal
+    primary: deep purple
 plugins:
   - search
   - mkdocstrings:
@@ -38,8 +39,8 @@ nav:
     - Transactions: components/transaction.md
     - Drivers: components/driver.md
     - Monitors: components/monitor.md
-  - Logging: logging.md
-  - Parameters: parameters.md
+  - Testcases: testcases.md
   - Sequences: sequences.md
   - Scoreboards: scoreboard.md
-  - Testcases: testcases.md
+  - Logging: logging.md
+  - Parameters: parameters.md

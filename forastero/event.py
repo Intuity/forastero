@@ -88,12 +88,26 @@ class EventEmitter:
         for event in events:
             event.set(data=obj)
 
-    def get_wait_event(self, event: Enum) -> Event:
+    def _get_wait_event(self, event: Enum) -> Event:
+        """
+        Internal method for generating cocotb Events tied to a specific enumerated
+        event trigger.
+
+        :param event: Enumerated event trigger
+        :returns:     The registered cocotb Event
+        """
         evt = Event()
         self._waiting[event].append(evt)
         return evt
 
     async def wait_for(self, event: Enum) -> Any:
-        evt = self.get_wait_event(event)
+        """
+        Wait for a specific enumerated event to occur and return the data that
+        was associated to it.
+
+        :param event: Enumerated event trigger
+        :returns:     Data associated with the event
+        """
+        evt = self._get_wait_event(event)
         await evt.wait()
         return evt.data

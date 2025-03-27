@@ -89,8 +89,10 @@ events defined:
  * [POST_DRIVE](#forastero.driver.DriverEvent.POST_DRIVE) - emitted just after a
    queued transaction is driven into the DUT;
 
+### Subscribing to Events
+
 A callback can be registered against any event, this may either be a synchronous
-or asynchronous method:
+or asynchronous method and will be called every time that the given event occurs:
 
 ```python
 from forastero.driver import DriverEvent
@@ -104,13 +106,37 @@ class Testbench(BaseBench):
         self.stream_init.subscribe(DriverEvent.PRE_DRIVE, self.stream_pre_drive)
         self.stream_init.subscribe(DriverEvent.POST_DRIVE, self.stream_post_drive)
 
-    def stream_pre_drive(self, driver, event, obj):
+    def stream_pre_drive(self,
+                         driver: StreamInitiator,
+                         event: DriverEvent,
+                         obj: StreamTransaction):
         self.info(f"Driver is about to drive object: {obj}")
 
-    async def stream_post_drive(self, driver, event, obj):
+    async def stream_post_drive(self,
+                                driver: StreamInitiator,
+                                event: DriverEvent,
+                                obj: StreamTransaction):
         self.info(f"Driver has just driven object: {obj}")
         await ClockCycles(tb.clk, 10)
         # ...generate some stimulus...
+```
+
+### Waiting for Events
+
+A test can wait for a specific driver event to occur using the `wait_for` method,
+this will block until the event happens and then return the transaction that
+caused the event:
+
+```python
+from forastero.driver import DriverEvent
+
+@Testbench.testcase()
+async def my_testcase(tb: Testbench, log: SimLog):
+    for _ in range(10):
+        # Generate and queue stimulus
+        tb.stream_init.enqueue(StreamTransaction(data=tb.random.getrandbits(32)))
+        # Wait for that stimulus to be driven
+        await tb.stream_init.wait_for(DriverEvent.POST_DRIVE)
 ```
 
 ## Generating Stimulus
@@ -130,9 +156,11 @@ async def random(tb: Testbench, log: SimLog):
         tb.stream_init.enqueue(StreamTransaction(data=tb.random.getrandbits(32)))
 ```
 
-Note that `tb.stream_init` refers to the instance of `StreamInitiator` that was
-registered onto the testbench in the Pvious example. The `for` loop then
-generates a number of `StreamTransaction` objects carrying random data.
+!!! note
+
+    `tb.stream_init` refers to the instance of `StreamInitiator` that was
+    registered onto the testbench in the previous example. The `for` loop then
+    generates a number of `StreamTransaction` objects carrying random data.
 
 Drivers can return an event to allow a test or sequence to determine when a
 particular transaction reaches a pre or post-drive state. When `wait_for` is
