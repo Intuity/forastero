@@ -34,8 +34,8 @@ without modelling the exact ordering function implemented by the hardware.
 
 To support this, the scoreboard offers matching windows - allowing a captured
 transaction to match against any of the first `N` entries of the reference queue.
-This can be configured using the `scoreboard_match_window` argument when registering
-a monitor.
+This can be configured using the `sb_match_window` argument when registering a
+monitor.
 
 In the example shown below the matching window is set to a value of 4, this
 means that each captured transaction can be matched against entries `0`, `1`,
@@ -51,7 +51,7 @@ class Testbench(BaseBench):
         ds_io = dsIO(dut, "ds", IORole.INITIATOR)
         self.register("ds_mon",
                       StreamMonitor(self, ds_io, self.clk, self.rst),
-                      scoreboard_match_window=4)
+                      sb_match_window=4)
 
     def model_stream(self):
         self.scoreboard.channels["ds_mon"].push_reference(StreamTransaction(...))
@@ -76,7 +76,7 @@ class Testbench(BaseBench):
         stream_io = StreamIO(dut, "stream", IORole.INITIATOR)
         self.register("arb_output_mon",
                       StreamMonitor(self, stream_io, self.clk, self.rst),
-                      scoreboard_queues=("a", "b", "c"))
+                      sb_queues=("a", "b", "c"))
 
     def model_arbiter_src_b(self):
         self.scoreboard.channels["arb_output_mon"].push_reference(
@@ -93,13 +93,13 @@ to scoreboard channels that specify how long it is acceptable for a transaction
 to sit at the front of the monitor's queue before the scoreboard matches it to
 a reference transaction. There are two key parameters to `self.register(...)`:
 
- * `scoreboard_timeout_ns` - the maximum acceptable age a transaction may be at
-   the front of the monitor's channel. The age is determined by substracting the
-   transaction's `timestamp` field (a default property of `BaseTransaction`)
-   from the current simulation time.
+ * `sb_timeout_ns` - the maximum acceptable age a transaction may be at the front
+   of the monitor's channel. The age is determined by substracting the transaction's
+   `timestamp` field (a default property of `BaseTransaction`) from the current
+   simulation time.
 
- * `scoreboard_polling_ns` - the frequency with which to check the front of the
-   scoreboard's monitor queue, this defaults to `100 ns`.
+ * `sb_polling_ns` - the frequency with which to check the front of the scoreboard's
+   monitor queue, this defaults to `100 ns`.
 
 Due to the interaction of the polling timeout and polling period, transactions
 may live longer than the timeout in certain cases but this is bounded by a
@@ -115,12 +115,57 @@ class Testbench(BaseBench):
         stream_io = StreamIO(dut, "stream", IORole.INITIATOR)
         self.register("stream_mon",
                       StreamMonitor(self, stream_io, self.clk, self.rst),
-                      scoreboard_timeout_ns=10)
+                      sb_timeout_ns=10)
 ```
+
+## Draining Policy
+
+The default behaviour of scoreboard channels is to block testcase completion
+until both the monitor and reference queues have fully emptied, however this can
+be customised by overriding the draining policy.
+
+There are 4 supported draining policies:
+
+ * [MON_AND_REF](#forastero.scoreboard.DrainPolicy.MON_AND_REF) - this is the default
+   behaviour and will block completion until both the monitor and reference queues
+   have fully emptied;
+ * [MON_ONLY](#forastero.scoreboard.DrainPolicy.MON_AND_REF) - only block until the
+   monitor queue has drained, ignoring the reference queue;
+ * [REF_ONLY](#forastero.scoreboard.DrainPolicy.MON_AND_REF) - only block until the
+   reference queue has drained, ignoring the monitor queue;
+ * [NON_BLOCKING](#forastero.scoreboard.DrainPolicy.MON_AND_REF) - neither the
+   monitor or reference queues need to drain for the scoreboard to shut down.
+
+The policy can be selected when registering the scoreboard channel:
+
+```python title="tb/testbench.py"
+from forastero import BaseBench, DrainPolicy, IORole
+from .stream import StreamIO, StreamMonitor
+
+class Testbench(BaseBench):
+    def __init__(self, dut) -> None:
+        super().__init__(dut, clk=dut.i_clk, rst=dut.i_rst)
+        stream_io = StreamIO(dut, "stream", IORole.INITIATOR)
+        self.register("stream_mon",
+                      StreamMonitor(self, stream_io, self.clk, self.rst),
+                      sb_drain_policy=DrainPolicy.REF_ONLY)
+```
+
+!!! note
+
+    If a scoreboard channel still contains entries in either the monitor or
+    reference queues, but these are ignored due to the draining policy, a warning
+    message will be raised from the scoreboard channel during shutdown.
 
 ---
 
 ::: forastero.scoreboard.Scoreboard
+    options:
+      show_root_heading: true
+      heading_level: 2
+      show_source: false
+
+::: forastero.scoreboard.DrainPolicy
     options:
       show_root_heading: true
       heading_level: 2
