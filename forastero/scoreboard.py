@@ -15,6 +15,7 @@
 import logging
 from collections import defaultdict
 from collections.abc import Callable
+from enum import Enum, auto
 from typing import Any
 
 import cocotb
@@ -36,6 +37,19 @@ class ChannelTimeoutError(AssertionError):
 
 class WindowResidenceError(AssertionError):
     pass
+
+
+class DrainPolicy(Enum):
+    """Specify the draining behaviour for a scoreboard channel"""
+
+    MON_AND_REF = auto()
+    """Block until both monitor and reference queues are empty"""
+    MON_ONLY = auto()
+    """Block until only the monitor queue is empty"""
+    REF_ONLY = auto()
+    """Block until only the reference queue is empty"""
+    NON_BLOCKING = auto()
+    """Do not wait for either queue to drain"""
 
 
 class Queue:
@@ -123,6 +137,9 @@ class Channel:
                          known, a positive integer matching window can be used
                          to match any of the next N transactions in the reference
                          queue (where N is set by match_window)
+    :param drain_policy: Specify how the handle should handle draining and which
+                         queues should be considered when blocking testcase
+                         shutdown
     """
 
     def __init__(
@@ -133,6 +150,7 @@ class Channel:
         filter_fn: Callable | None,
         timeout_ns: int | None = None,
         polling_ns: int = 100,
+        drain_policy: DrainPolicy = DrainPolicy.MON_AND_REF,
         match_window: int = 1,
     ) -> None:
         self.name = name
@@ -141,6 +159,10 @@ class Channel:
         self.filter_fn = filter_fn
         self.timeout_ns = timeout_ns
         self.polling_ns = polling_ns
+        self.drain_policy = drain_policy
+        assert (
+            self.drain_policy in DrainPolicy._value2member_map_
+        ), f"Unsupported draining mode {self.drain_policy}"
         self.match_window = match_window or 1
         assert (
             isinstance(self.match_window, int) and self.match_window > 0
@@ -310,8 +332,27 @@ class Channel:
     async def drain(self) -> None:
         """Block until the channel's monitor and reference queues empty"""
         # Start draining
-        while self.monitor_depth > 0 or self.reference_depth > 0:
-            await RisingEdge(self.monitor.clk)
+        match self.drain_policy:
+            case DrainPolicy.MON_AND_REF:
+                while self.monitor_depth > 0 or self.reference_depth > 0:
+                    await RisingEdge(self.monitor.clk)
+            case DrainPolicy.MON_ONLY:
+                while self.monitor_depth > 0:
+                    await RisingEdge(self.monitor.clk)
+            case DrainPolicy.REF_ONLY:
+                while self.reference_depth > 0:
+                    await RisingEdge(self.monitor.clk)
+        # Helper messages to flag if reference or monitor queues contain entries
+        if self.reference_depth > 0:
+            self.log.warning(
+                f"Reference queue of scoreboard channel {self.name} still contains "
+                f"{self.reference_depth} items but is ignored by the draining mode"
+            )
+        if self.monitor_depth > 0:
+            self.log.warning(
+                f"Monitor queue of scoreboard channel {self.name} still contains "
+                f"{self.monitor_depth} items but is ignored by the draining mode"
+            )
         # Wait for the lock to ensure a comparison is not still underway
         await self._lock.acquire()
         # Release the lock (in case we call drain multiple times)
@@ -351,16 +392,19 @@ class FunnelChannel(Channel):
     streams. Reference data can be pushed into one or more named queues and when
     monitor packets arrive any queue head is valid.
 
-    :param name:       Name of this scoreboard channel
-    :param monitor:    Handle to the monitor capturing traffic from the DUT
-    :param log:        Handle to the scoreboard log
-    :param filter_fn:  Function to filter or modify captured transactions
-    :param ref_queues: List of reference queue names
-    :param timeout_ns: Optional timeout to allow for a object sat at the front
-                       of the monitor queue to remain unmatched (in nanoseconds,
-                       a value of None disables the timeout mechanism)
-    :param polling_ns: How frequently to poll to check for unmatched items stuck
-                       in the monitor queue in nanoseconds (defaults to 100 ns)
+    :param name:         Name of this scoreboard channel
+    :param monitor:      Handle to the monitor capturing traffic from the DUT
+    :param log:          Handle to the scoreboard log
+    :param filter_fn:    Function to filter or modify captured transactions
+    :param ref_queues:   List of reference queue names
+    :param timeout_ns:   Optional timeout to allow for a object sat at the front
+                         of the monitor queue to remain unmatched (in nanoseconds,
+                         a value of None disables the timeout mechanism)
+    :param polling_ns:   How frequently to poll to check for unmatched items stuck
+                         in the monitor queue in nanoseconds (defaults to 100 ns)
+    :param drain_policy: Specify how the handle should handle draining and which
+                         queues should be considered when blocking testcase
+                         shutdown
     """
 
     def __init__(
@@ -372,9 +416,16 @@ class FunnelChannel(Channel):
         ref_queues: list[str] | tuple[str],
         timeout_ns: int | None = None,
         polling_ns: int = 100,
+        drain_policy: DrainPolicy = DrainPolicy.MON_AND_REF,
     ) -> None:
         super().__init__(
-            name, monitor, log, filter_fn, timeout_ns=timeout_ns, polling_ns=polling_ns
+            name,
+            monitor,
+            log,
+            filter_fn,
+            timeout_ns=timeout_ns,
+            polling_ns=polling_ns,
+            drain_policy=drain_policy,
         )
         self._q_ref = {x: Queue() for x in ref_queues}
 
@@ -503,6 +554,7 @@ class Scoreboard:
         queues: list[str] | tuple[str] | None = None,
         timeout_ns: int | None = None,
         polling_ns: int = 100,
+        drain_policy: DrainPolicy = DrainPolicy.MON_AND_REF,
         match_window: int = 1,
     ) -> None:
         """
@@ -519,6 +571,9 @@ class Scoreboard:
                              a value of None disables the timeout mechanism)
         :param polling_ns:   How frequently to poll to check for unmatched items stuck
                              in the monitor queue in nanoseconds (defaults to 100 ns)
+        :param drain_policy: Specify how the handle should handle draining and
+                             which queues should be considered when blocking
+                             testcase shutdown
         :param match_window: Where precise ordering of expected transactions is not
                              known, a positive integer matching window can be used
                              to match any of the next N transactions in the reference
@@ -534,6 +589,7 @@ class Scoreboard:
                 queues,
                 timeout_ns=timeout_ns,
                 polling_ns=polling_ns,
+                drain_policy=drain_policy,
             )
         else:
             channel = Channel(
@@ -543,6 +599,7 @@ class Scoreboard:
                 filter_fn,
                 timeout_ns=timeout_ns,
                 polling_ns=polling_ns,
+                drain_policy=drain_policy,
                 match_window=match_window,
             )
         self.channels[channel.name] = channel
