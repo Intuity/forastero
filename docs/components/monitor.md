@@ -164,7 +164,7 @@ class Testbench(BaseBench):
                           self.clk,
                           self.rst,
                       ),
-                      scoreboard_filter=self.filter_mapped_req_mon)
+                      sb_filter=self.filter_mapped_req_mon)
         self.mapped_req_mon.subscribe(MonitorEvent.CAPTURE, self.mapped_capture)
 
     def filter_mapped_req_mon(self,
