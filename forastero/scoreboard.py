@@ -160,8 +160,8 @@ class Channel:
         self.timeout_ns = timeout_ns
         self.polling_ns = polling_ns
         self.drain_policy = drain_policy
-        assert (
-            self.drain_policy in DrainPolicy._value2member_map_
+        assert self.drain_policy in list(
+            DrainPolicy
         ), f"Unsupported draining mode {self.drain_policy}"
         self.match_window = match_window or 1
         assert (
