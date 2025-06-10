@@ -36,7 +36,7 @@ from .component import Component
 from .driver import BaseDriver
 from .io import IORole
 from .monitor import BaseMonitor
-from .scoreboard import Scoreboard
+from .scoreboard import DrainPolicy, Scoreboard
 from .sequence import BaseSequence, SeqArbiter
 
 
@@ -223,11 +223,13 @@ class BaseBench:
         name: str,
         comp_or_coro: Component | Coroutine = None,
         scoreboard: bool = True,
-        scoreboard_queues: list[str] | None = None,
-        scoreboard_filter: Callable | None = None,
-        scoreboard_timeout_ns: int | None = None,
-        scoreboard_polling_ns: int = 100,
-        scoreboard_match_window: int = 1,
+        sb_queues: list[str] | tuple[str] | None = None,
+        sb_filter: Callable | None = None,
+        sb_timeout_ns: int | None = None,
+        sb_polling_ns: int | None = None,
+        sb_drain_policy: DrainPolicy | None = None,
+        sb_match_window: int | None = None,
+        **kwds,
     ) -> Component | Coroutine:
         """
         Register a driver, monitor, or coroutine with the testbench. Drivers and
@@ -236,33 +238,65 @@ class BaseBench:
         the scoreboard unless explicitly requested. Coroutines must also be named
         and are required to complete before the test will shutdown.
 
-        :param name:                    Name of the component or coroutine
-        :param comp_or_coro:            Component instance or coroutine
-        :param scoreboard:              Only applies to monitors, controls whether
-                                        it is registered with the scoreboard
-        :param scoreboard_queues:       A list of named queues used when a funnel
-                                        type scoreboard channel is required
-        :param scoreboard_filter:       A function that can filter or modify items
-                                        recorded by the monitor before they are
-                                        passed to the scoreboard
-        :param scoreboard_timeout_ns:   Optional timeout to allow for a object sat
-                                        at the front of the monitor queue to remain
-                                        unmatched (in nanoseconds, a value of None
-                                        disables the timeout mechanism)
-        :param scoreboard_polling_ns:   How frequently to poll to check for unmatched
-                                        items stuck in the monitor queue in nanoseconds
-                                        (defaults to 100 ns)
-        :param scoreboard_match_window: Where precise ordering of expected transactions
-                                        is not known, a positive integer matching window
-                                        can be used to match any of the next N
-                                        transactions in the reference queue (where N is
-                                        set by match_window)
+        :param name:            Name of the component or coroutine
+        :param comp_or_coro:    Component instance or coroutine
+        :param scoreboard:      Only applies to monitors, controls whether it is
+                                registered with the scoreboard
+        :param sb_queues:       A list of named queues used when a funnel type
+                                scoreboard channel is required
+        :param sb_filter:       A function that can filter or modify items
+                                recorded by the monitor before they are passed
+                                to the scoreboard
+        :param sb_timeout_ns:   Optional timeout to allow for a object sat at the
+                                front of the monitor queue to remain unmatched
+                                (in nanoseconds, a value of None disables the
+                                timeout mechanism)
+        :param sb_polling_ns:   How frequently to poll to check for unmatched
+                                items stuck in the monitor queue in nanoseconds
+                                (defaults to 100 ns)
+        :param sb_drain_policy: Specify how the handle should handle draining and
+                                which queues should be considered when blocking
+                                testcase shutdown
+        :param sb_match_window: Where precise ordering of expected transactions
+                                is not known, a positive integer matching window
+                                can be used to match any of the next N transactions
+                                in the reference queue (where N is set by
+                                match_window)
         """
+        # Allow either sb_ or scoreboard_ prefixes to arguments (back compatibility)
+        sb_args = {
+            "queues": sb_queues,
+            "filter": sb_filter,
+            "timeout_ns": sb_timeout_ns,
+            "polling_ns": sb_polling_ns,
+            "drain_policy": sb_drain_policy,
+            "match_window": sb_match_window,
+        }
+
+        for key, value in sb_args.items():
+            if (full_key := f"scoreboard_{key}") in kwds:
+                assert value is None, f"Both sb_{key} and {full_key} specified"
+                sb_args[key] = kwds.pop(full_key)
+
+        assert not kwds, "Unexpected arguments: " + ", ".join(map(str, kwds.keys()))
+
+        # Setup default argument values
+        if sb_args["polling_ns"] is None:
+            sb_args["polling_ns"] = 100
+        if sb_args["drain_policy"] is None:
+            sb_args["drain_policy"] = DrainPolicy.MON_AND_REF
+        if sb_args["match_window"] is None:
+            sb_args["match_window"] = 1
+
         assert isinstance(name, str), f"Name must be a string '{name}'"
+
+        # Register a coroutine
         if asyncio.iscoroutine(comp_or_coro):
             assert name not in self._processes, f"Process known for '{name}'"
             task = cocotb.start_soon(comp_or_coro)
             self._processes[name] = task
+
+        # Register a component (i.e. monitor or driver)
         elif isinstance(comp_or_coro, Component):
             assert name not in self._components, f"Component known for '{name}'"
             self._components[name] = comp_or_coro
@@ -272,14 +306,19 @@ class BaseBench:
             if scoreboard and isinstance(comp_or_coro, BaseMonitor):
                 self.scoreboard.attach(
                     comp_or_coro,
-                    filter_fn=scoreboard_filter,
-                    queues=scoreboard_queues,
-                    timeout_ns=scoreboard_timeout_ns,
-                    polling_ns=scoreboard_polling_ns,
-                    match_window=scoreboard_match_window,
+                    filter_fn=sb_args["filter"],
+                    queues=sb_args["queues"],
+                    timeout_ns=sb_args["timeout_ns"],
+                    polling_ns=sb_args["polling_ns"],
+                    drain_policy=sb_args["drain_policy"],
+                    match_window=sb_args["match_window"],
                 )
+
+        # Unknown type
         else:
             raise TypeError(f"Unsupported object: {comp_or_coro}")
+
+        # Return the registered item to allow chaining
         return comp_or_coro
 
     def schedule(

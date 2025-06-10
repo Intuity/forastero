@@ -16,7 +16,7 @@ from .bench import BaseBench
 from .driver import BaseDriver, DriverEvent
 from .io import BaseIO, IORole, io_plain_style, io_prefix_style, io_suffix_style
 from .monitor import BaseMonitor, MonitorEvent
-from .scoreboard import Scoreboard
+from .scoreboard import DrainPolicy, Scoreboard
 from .sequence import SeqContext, SeqLock, SeqProxy, randarg, requires, sequence
 from .transaction import BaseTransaction
 
@@ -28,6 +28,7 @@ assert all(
         BaseIO,
         BaseMonitor,
         BaseTransaction,
+        DrainPolicy,
         DriverEvent,
         MonitorEvent,
         Scoreboard,
