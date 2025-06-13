@@ -15,10 +15,6 @@
 import contextlib
 import itertools
 import logging
-
-# TODO @intuity: Changed from using cocotb's Lock as it causes a crash when
-#                acquired - I'm not sure if there's a downside to this?
-from asyncio import Lock
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from enum import Enum, auto
@@ -30,7 +26,7 @@ import cocotb
 
 # TODO @intuity: Is there a better type than SimHandleBase
 from cocotb.handle import SimHandleBase
-from cocotb.triggers import Event, First
+from cocotb.triggers import Event, First, Lock
 
 from .component import Component
 from .driver import BaseDriver

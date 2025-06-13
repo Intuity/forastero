@@ -85,7 +85,6 @@ class BaseBench:
     def __init__(
         self,
         dut: HierarchyObject,
-        # TODO @intuity: Is there a better type than SimHandleBase?
         clk: SimHandleBase | None = None,
         rst: SimHandleBase | None = None,
         clk_drive: bool = True,
