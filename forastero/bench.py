@@ -326,7 +326,7 @@ class BaseBench:
         self,
         sequence: tuple[
             BaseSequence,
-            Callable[[SimLog, random.Random, SeqArbiter, ModifiableObject, ModifiableObject], None],
+            Callable[[SimLog, random.Random, SeqArbiter, SimHandleBase, SimHandleBase], None],
         ],
         blocking: bool = True,
     ) -> Task:
@@ -438,18 +438,19 @@ class BaseBench:
             async def _imposter(dut):
                 # Clear components registered from previous runs
                 Component.COMPONENTS.clear()
+
                 # Create a testbench instance
                 try:
                     tb = cls(dut)
                 except Exception as e:
-                    dut._log.error(
-                        f"Caught exception during {cls.__name__} constuction: {e}"
-                    )
+                    dut._log.error(f"Caught exception during {cls.__name__} constuction: {e}")
                     dut._log.error(traceback.format_exc())
                     raise e
+
                 # Log what's going on
                 tc_name = func.__name__
                 tb._orch_log.info(f"Preparing testcase {tc_name}")
+
                 # Check all components have been registered
                 missing = 0
                 for comp in Component.COMPONENTS:
@@ -460,11 +461,11 @@ class BaseBench:
                         )
                         missing += 1
                 assert missing == 0, "Some bench components have not been registered"
+
                 # If clock driving specified, start the clock
                 if tb.clk_drive:
-                    cocotb.start_soon(
-                        Clock(tb.clk, tb.clk_period, units=tb.clk_units).start()
-                    )
+                    cocotb.start_soon(Clock(tb.clk, tb.clk_period, units=tb.clk_units).start())
+
                 # If reset requested, run the sequence
                 if reset:
                     tb._orch_log.info("Resetting the DUT")
@@ -478,9 +479,11 @@ class BaseBench:
                         dut._log.error(f"Caught exception during {cls.__name__} constuction: {e}")
                         dut._log.error(traceback.format_exc())
                         raise e
+
                     # Log what's going on
                     tc_name = func.__name__
                     tb._orch_log.info(f"Preparing testcase {tc_name}")
+
                     # Check all components have been registered
                     missing = 0
                     for comp in Component.COMPONENTS:
@@ -491,9 +494,11 @@ class BaseBench:
                             )
                             missing += 1
                     assert missing == 0, "Some bench components have not been registered"
+
                     # If clock driving specified, start the clock
                     if tb.clk_drive:
                         cocotb.start_soon(Clock(tb.clk, tb.clk_period, units=tb.clk_units).start())
+
                     # If reset requested, run the sequence
                     if reset:
                         tb._orch_log.info("Resetting the DUT")
@@ -516,28 +521,28 @@ class BaseBench:
                 for comp in tb._components.values():
                     await comp.ready()
 
-                    # Create a forked log
-                    log = tb.fork_log("test", tc_name)
+                # Create a forked log
+                log = tb.fork_log("test", tc_name)
 
-                    # Are there any parameters for this test?
-                    raw_tc_params = cls.get_parameter("testcases")
-                    params = {}
-                    for key, cast in cls.TEST_REQ_PARAMS[func]:
-                        # First look for "<TESTCASE_NAME>.<PARAMETER_NAME>"
-                        # but fall back to just "<PARAMETER_NAME>"
-                        value = raw_tc_params.get(f"{tc_name}.{key}", raw_tc_params.get(key, None))
-                        if value is None:
-                            continue
+                # Are there any parameters for this test?
+                raw_tc_params = cls.get_parameter("testcases")
+                params = {}
+                for key, cast in cls.TEST_REQ_PARAMS[func]:
+                    # First look for "<TESTCASE_NAME>.<PARAMETER_NAME>"
+                    # but fall back to just "<PARAMETER_NAME>"
+                    value = raw_tc_params.get(f"{tc_name}.{key}", raw_tc_params.get(key, None))
+                    if value is None:
+                        continue
 
-                        # Cast string values to the appropriate type
-                        if isinstance(value, str) and cast is not str:
-                            if cast is bool:
-                                value = strtobool(value)
-                            else:
-                                value = cast(value)
+                    # Cast string values to the appropriate type
+                    if isinstance(value, str) and cast is not str:
+                        if cast is bool:
+                            value = strtobool(value)
+                        else:
+                            value = cast(value)
 
-                        log.debug(f"Parameter {key}={value}")
-                        params[key] = value
+                    log.debug(f"Parameter {key}={value}")
+                    params[key] = value
 
                 # Declare an intermediate function (this allows us to wrap
                 # with a optional timeout)
@@ -545,38 +550,38 @@ class BaseBench:
                     await func(tb, log, *args, **kwargs, **params)
                     await tb.close_down(loops=shutdown_loops, delay=shutdown_delay)
 
-                    # Run with a timeout if specified
-                    postponed = None
-                    if timeout is None:
-                        await _inner()
-                    else:
-                        try:
-                            await with_timeout(_inner(), timeout, "ns")
-                        except SimTimeoutError as e:
-                            postponed = e
-                            tb._orch_log.error(f"Simulation timed out after {timeout} ns")
-                            # List any busy drivers
-                            for name, driver in tb._components.items():
-                                if isinstance(driver, BaseDriver) and driver.queued > 0:
-                                    tb._orch_log.info(
-                                        f"Driver {name} has {driver.queued} "
-                                        f"items remaining in its queue"
-                                    )
+                # Run with a timeout if specified
+                postponed = None
+                if timeout is None:
+                    await _inner()
+                else:
+                    try:
+                        await with_timeout(_inner(), timeout, "ns")
+                    except SimTimeoutError as e:
+                        postponed = e
+                        tb._orch_log.error(f"Simulation timed out after {timeout} ns")
+                        # List any busy drivers
+                        for name, driver in tb._components.items():
+                            if isinstance(driver, BaseDriver) and driver.queued > 0:
+                                tb._orch_log.info(
+                                    f"Driver {name} has {driver.queued} "
+                                    f"items remaining in its queue"
+                                )
 
                 # Report status of scoreboard channels
                 for _, channel in tb.scoreboard.channels.items():
                     channel.report()
 
-                    # When using postmortem, catch errors before exit
-                    if tb.get_parameter("postmortem", False) and (
-                        (postponed is not None) or not tb.scoreboard.result
-                    ):
-                        tb._orch_log.warning("Entering postmortem")
-                        breakpoint()
+                # When using postmortem, catch errors before exit
+                if tb.get_parameter("postmortem", False) and (
+                    (postponed is not None) or not tb.scoreboard.result
+                ):
+                    tb._orch_log.warning("Entering postmortem")
+                    breakpoint()
 
-                    # If an exception has been postponed, re-raise it now
-                    if postponed is not None:
-                        raise postponed
+                # If an exception has been postponed, re-raise it now
+                if postponed is not None:
+                    raise postponed
 
                 # Check the result
                 assert tb.scoreboard.result, "Scoreboard reported test failure"
@@ -584,7 +589,7 @@ class BaseBench:
             _imposter.__module__ = cls.__module__.split(".")[0]
             _imposter.__name__ = func.__name__
             _imposter.__qualname__ = func.__qualname__
-            cocotb.test(_imposter)
+            cocotb._regression_manager.register_test(cocotb.test(_imposter))
 
         return _inner
 

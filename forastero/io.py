@@ -16,8 +16,7 @@ from collections.abc import Callable
 from enum import IntEnum
 from typing import Any
 
-# TODO @intuity: Is there a better type than SimHandleBase?
-from cocotb.handle import HierarchyObject, SimHandleBase
+from cocotb.handle import HierarchyObject, SimHandleBase, _RangeableObjectMixin
 from cocotb.logging import SimLog
 
 
@@ -59,7 +58,7 @@ class SignalWrapper:
         self._packing = []
         self._width = 0
         for comp in all_components[::-1]:
-            if comp.range is None:
+            if not isinstance(comp, _RangeableObjectMixin):
                 c_msb, c_lsb = len(comp) - 1, 0
             elif comp.range.direction == "downto":
                 c_msb, c_lsb = comp.range.left, comp.range.right
