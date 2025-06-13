@@ -19,10 +19,8 @@ THIS_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 SPACE := $(SPACE) $(SPACE)
 
 # Simulator options
-SIM           ?= icarus
+SIM           ?= verilator
 TOPLEVEL_LANG ?= verilog
-DEFINES       += sim_$(SIM)
-PLUSARGS      += +WAVE_FILE=dump.vcd
 COMPILE_ARGS  += $(addprefix -D ,$(DEFINES))
 
 # Design sources

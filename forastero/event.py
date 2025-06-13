@@ -22,12 +22,22 @@ import cocotb
 from cocotb.triggers import Event
 
 
+class DataEvent(Event):
+    def __init__(self, *args, **kwds):
+        super().__init__(*args, **kwds)
+        self.data = None
+
+    def set(self, data=None):
+        self.data = data
+        super().set()
+
+
 class EventEmitter:
     """Core support for publishing events and subscribing to them"""
 
     def __init__(self) -> None:
         self._handlers = defaultdict(list)
-        self._ready = Event()
+        self._ready = DataEvent()
         self._waiting = defaultdict(list)
 
     def subscribe(self, event: Enum, callback: Callable) -> None:
@@ -88,15 +98,8 @@ class EventEmitter:
         for event in events:
             event.set(data=obj)
 
-    def _get_wait_event(self, event: Enum) -> Event:
-        """
-        Internal method for generating cocotb Events tied to a specific enumerated
-        event trigger.
-
-        :param event: Enumerated event trigger
-        :returns:     The registered cocotb Event
-        """
-        evt = Event()
+    def _get_wait_event(self, event: Enum) -> DataEvent:
+        evt = DataEvent()
         self._waiting[event].append(evt)
         return evt
 

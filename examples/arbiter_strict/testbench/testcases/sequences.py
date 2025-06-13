@@ -13,7 +13,8 @@
 # limitations under the License.
 
 
-from cocotb.log import SimLog
+from logging import Logger
+
 from common.io.stream import (
     StreamInitiator,
     StreamTransaction,
@@ -58,7 +59,7 @@ async def burst_on_a_only(
 @Testbench.parameter("burst_max", int)
 async def random_seq(
     tb: Testbench,
-    log: SimLog,
+    log: Logger,
     single_pkts: int = 2000,
     burst_count: int = 10,
     burst_min: int = 100,
