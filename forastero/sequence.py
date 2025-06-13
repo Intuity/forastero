@@ -23,8 +23,6 @@ from random import Random
 from typing import Any, ClassVar, Generic, Self, TypeVar
 
 import cocotb
-
-# TODO @intuity: Is there a better type than SimHandleBase
 from cocotb.handle import SimHandleBase
 from cocotb.triggers import Event, First, Lock
 
