@@ -458,7 +458,7 @@ class FunnelChannel(Channel):
         # Wait for monitor to capture a transaction
         await self._q_mon.wait_for_not_empty()
         # Once a monitor transaction arrives, lock out the drain procedure
-        self.held = await self._lock.acquire()
+        await self._lock.acquire()
         # Peek at the front of all of the queues
         while True:
             next_mon = self._q_mon.peek()

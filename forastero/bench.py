@@ -485,7 +485,7 @@ class BaseBench:
                             wait_after=reset_wait_after,
                         )
                     except Exception as e:
-                        dut._log.error(f"Caught exception during {cls.__name__} constuction: {e}")
+                        dut._log.error(f"Caught exception during {cls.__name__} construction: {e}")
                         dut._log.error(traceback.format_exc())
                         raise e
 
