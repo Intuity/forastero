@@ -28,9 +28,17 @@ from typing import Any, ClassVar
 import cocotb
 from cocotb.clock import Clock
 from cocotb.handle import HierarchyObject, SimHandleBase
-from cocotb.logging import SimLog, SimLogFormatter, SimTimeContextFilter
 from cocotb.task import Task
-from cocotb.triggers import ClockCycles, Event, SimTimeoutError, with_timeout
+from cocotb.triggers import ClockCycles, Event, with_timeout
+
+# Support for cocotb 2.X
+try:
+    from cocotb.logging import SimLogFormatter, SimTimeContextFilter
+    from cocotb.triggers import SimTimeoutError
+# Fallback for cocotb 1.X
+except ImportError:
+    from cocotb.log import SimLogFormatter, SimTimeContextFilter
+    from cocotb.result import SimTimeoutError
 
 from .component import Component
 from .driver import BaseDriver
@@ -101,7 +109,7 @@ class BaseBench:
         self.clk_period = clk_period
         self.clk_units = clk_units
         # Alias logging methods
-        self.log = SimLog("tb")
+        self.log = logging.getLogger("tb")
         self.debug = self.log.debug
         self.info = self.log.info
         self.warning = self.log.warning
@@ -325,7 +333,9 @@ class BaseBench:
         self,
         sequence: tuple[
             BaseSequence,
-            Callable[[SimLog, random.Random, SeqArbiter, SimHandleBase, SimHandleBase], None],
+            Callable[
+                [logging.Logger, random.Random, SeqArbiter, SimHandleBase, SimHandleBase], None
+            ],
         ],
         blocking: bool = True,
     ) -> Task:
@@ -588,7 +598,12 @@ class BaseBench:
             _imposter.__module__ = cls.__module__.split(".")[0]
             _imposter.__name__ = func.__name__
             _imposter.__qualname__ = func.__qualname__
-            cocotb._regression_manager.register_test(cocotb.test(_imposter))
+            # Support for cocotb 2.X
+            if hasattr(cocotb, "_regression_manager"):
+                cocotb._regression_manager.register_test(cocotb.test(_imposter))
+            # Fallback for cocotb 1.X
+            else:
+                return cocotb.test(_imposter)
 
         return _inner
 

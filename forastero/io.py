@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 from collections.abc import Callable
 from enum import IntEnum
 from typing import Any
 
-from cocotb.handle import HierarchyObject, SimHandleBase, _RangeableObjectMixin
-from cocotb.logging import SimLog
+from cocotb.handle import HierarchyObject, SimHandleBase
 
 
 class IORole(IntEnum):
@@ -58,12 +58,18 @@ class SignalWrapper:
         self._packing = []
         self._width = 0
         for comp in all_components[::-1]:
-            if not isinstance(comp, _RangeableObjectMixin):
-                c_msb, c_lsb = len(comp) - 1, 0
-            elif comp.range.direction == "downto":
-                c_msb, c_lsb = comp.range.left, comp.range.right
+            # cocotb 2.X support
+            if getattr(comp, "range", None) is not None:
+                if comp.range.direction == "downto":
+                    c_msb, c_lsb = comp.range.left, comp.range.right
+                else:
+                    c_msb, c_lsb = comp.range.right, comp.range.left
+            # cocotb 1.X support
+            elif getattr(comp, "_range", None) is not None:
+                c_msb, c_lsb = comp._range
+            # Fallback to the length of the component if no range is available
             else:
-                c_msb, c_lsb = comp.range.right, comp.range.left
+                c_msb, c_lsb = len(comp) - 1, 0
             rel_msb, rel_lsb = self._width + c_msb, self._width + c_lsb
             width = len(comp)
             self._packing.append(((rel_lsb, rel_msb, (1 << width) - 1), comp))
@@ -195,7 +201,7 @@ class BaseIO:
         for comp in self._init_sigs:
             sig = io_style(self._name, comp, self._role, IORole.INITIATOR)
             if not hasattr(self._dut, sig):
-                SimLog("tb").getChild(f"io.{type(self).__name__.lower()}").info(
+                logging.getLogger("tb").getChild(f"io.{type(self).__name__.lower()}").info(
                     f"{type(self).__name__}: Did not find I/O component {sig} on {dut}"
                 )
                 continue
@@ -205,7 +211,7 @@ class BaseIO:
         for comp in self._resp_sigs:
             sig = io_style(name, comp, self._role, IORole.RESPONDER)
             if not hasattr(self._dut, sig):
-                SimLog("tb").getChild(f"io.{type(self).__name__.lower()}").info(
+                logging.getLogger("tb").getChild(f"io.{type(self).__name__.lower()}").info(
                     f"{type(self).__name__}: Did not find I/O component {sig} on {dut}"
                 )
                 continue
