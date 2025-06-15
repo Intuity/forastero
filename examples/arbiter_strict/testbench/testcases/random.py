@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from cocotb.log import SimLog
+from logging import Logger
+
 from cocotb.triggers import ClockCycles
 from common.io.stream import StreamBackpressure, StreamTransaction
 
@@ -24,7 +25,7 @@ from ..testbench import Testbench
 @Testbench.testcase()
 @Testbench.parameter("packets", int)
 @Testbench.parameter("delay", int)
-async def random(tb: Testbench, log: SimLog, packets: int = 1000, delay: int = 5000):
+async def random(tb: Testbench, log: Logger, packets: int = 1000, delay: int = 5000):
     # Disable backpressure on input
     tb.x_resp.enqueue(StreamBackpressure(ready=True))
 

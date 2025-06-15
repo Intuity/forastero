@@ -21,16 +21,24 @@ import random
 import traceback
 from collections import defaultdict
 from collections.abc import Callable, Coroutine
+from logging import Logger
 from pathlib import Path
 from typing import Any, ClassVar
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.handle import HierarchyObject, ModifiableObject
-from cocotb.log import SimLog, SimLogFormatter, SimTimeContextFilter
-from cocotb.result import SimTimeoutError
+from cocotb.handle import HierarchyObject, SimHandleBase
 from cocotb.task import Task
 from cocotb.triggers import ClockCycles, Event, with_timeout
+
+# Support for cocotb 2.X
+try:
+    from cocotb.logging import SimLogFormatter, SimTimeContextFilter
+    from cocotb.triggers import SimTimeoutError
+# Fallback for cocotb 1.X
+except ImportError:
+    from cocotb.log import SimLogFormatter, SimTimeContextFilter
+    from cocotb.result import SimTimeoutError
 
 from .component import Component
 from .driver import BaseDriver
@@ -85,8 +93,8 @@ class BaseBench:
     def __init__(
         self,
         dut: HierarchyObject,
-        clk: ModifiableObject | None = None,
-        rst: ModifiableObject | None = None,
+        clk: SimHandleBase | None = None,
+        rst: SimHandleBase | None = None,
         clk_drive: bool = True,
         clk_period: float = 1,
         clk_units: str = "ns",
@@ -101,7 +109,7 @@ class BaseBench:
         self.clk_period = clk_period
         self.clk_units = clk_units
         # Alias logging methods
-        self.log = SimLog("tb")
+        self.log = logging.getLogger("tb")
         self.debug = self.log.debug
         self.info = self.log.info
         self.warning = self.log.warning
@@ -137,7 +145,7 @@ class BaseBench:
         # Events
         self.evt_ready = Event()
 
-    def fork_log(self, *scope: str) -> SimLog:
+    def fork_log(self, *scope: str) -> Logger:
         """
         Create a new descedent of the root simulation log with a given context.
 
@@ -325,7 +333,9 @@ class BaseBench:
         self,
         sequence: tuple[
             BaseSequence,
-            Callable[[SimLog, random.Random, SeqArbiter, ModifiableObject, ModifiableObject], None],
+            Callable[
+                [logging.Logger, random.Random, SeqArbiter, SimHandleBase, SimHandleBase], None
+            ],
         ],
         blocking: bool = True,
     ) -> Task:
@@ -433,21 +443,56 @@ class BaseBench:
                                   (defaults to 1)
         """
 
-        class _Testcase(cocotb.test):
-            def __call__(self, dut, *args, **kwargs):
-                async def _run_test():
-                    # Clear components registered from previous runs
-                    Component.COMPONENTS.clear()
-                    # Create a testbench instance
+        def _inner(func):
+            async def _imposter(dut):
+                # Clear components registered from previous runs
+                Component.COMPONENTS.clear()
+
+                # Create a testbench instance
+                try:
+                    tb = cls(dut)
+                except Exception as e:
+                    dut._log.error(f"Caught exception during {cls.__name__} constuction: {e}")
+                    dut._log.error(traceback.format_exc())
+                    raise e
+
+                # Log what's going on
+                tc_name = func.__name__
+                tb._orch_log.info(f"Preparing testcase {tc_name}")
+
+                # Check all components have been registered
+                missing = 0
+                for comp in Component.COMPONENTS:
+                    if comp not in tb._components.values():
+                        tb._orch_log.error(
+                            f"{type(comp).__name__} '{comp.name}' has "
+                            f"not been registered with the testbench"
+                        )
+                        missing += 1
+                assert missing == 0, "Some bench components have not been registered"
+
+                # If clock driving specified, start the clock
+                if tb.clk_drive:
+                    cocotb.start_soon(Clock(tb.clk, tb.clk_period, units=tb.clk_units).start())
+
+                # If reset requested, run the sequence
+                if reset:
+                    tb._orch_log.info("Resetting the DUT")
                     try:
-                        tb = cls(dut)
+                        await tb.reset(
+                            init=reset_init,
+                            wait_during=reset_wait_during,
+                            wait_after=reset_wait_after,
+                        )
                     except Exception as e:
-                        dut._log.error(f"Caught exception during {cls.__name__} constuction: {e}")
+                        dut._log.error(f"Caught exception during {cls.__name__} construction: {e}")
                         dut._log.error(traceback.format_exc())
                         raise e
+
                     # Log what's going on
-                    tc_name = self._func.__name__
+                    tc_name = func.__name__
                     tb._orch_log.info(f"Preparing testcase {tc_name}")
+
                     # Check all components have been registered
                     missing = 0
                     for comp in Component.COMPONENTS:
@@ -458,9 +503,11 @@ class BaseBench:
                             )
                             missing += 1
                     assert missing == 0, "Some bench components have not been registered"
+
                     # If clock driving specified, start the clock
                     if tb.clk_drive:
                         cocotb.start_soon(Clock(tb.clk, tb.clk_period, units=tb.clk_units).start())
+
                     # If reset requested, run the sequence
                     if reset:
                         tb._orch_log.info("Resetting the DUT")
@@ -476,86 +523,89 @@ class BaseBench:
                             raise e
                         tb._orch_log.info("DUT reset complete")
 
-                    # Mark ready
-                    tb.evt_ready.set()
+                # Mark ready
+                tb.evt_ready.set()
 
-                    # Wait for all components to be ready
-                    for comp in tb._components.values():
-                        await comp.ready()
+                # Wait for all components to be ready
+                for comp in tb._components.values():
+                    await comp.ready()
 
-                    # Create a forked log
-                    log = tb.fork_log("test", tc_name)
+                # Create a forked log
+                log = tb.fork_log("test", tc_name)
 
-                    # Are there any parameters for this test?
-                    raw_tc_params = cls.get_parameter("testcases")
-                    params = {}
-                    for key, cast in cls.TEST_REQ_PARAMS[self._func]:
-                        # First look for "<TESTCASE_NAME>.<PARAMETER_NAME>"
-                        # but fall back to just "<PARAMETER_NAME>"
-                        value = raw_tc_params.get(f"{tc_name}.{key}", raw_tc_params.get(key, None))
-                        if value is None:
-                            continue
+                # Are there any parameters for this test?
+                raw_tc_params = cls.get_parameter("testcases")
+                params = {}
+                for key, cast in cls.TEST_REQ_PARAMS[func]:
+                    # First look for "<TESTCASE_NAME>.<PARAMETER_NAME>"
+                    # but fall back to just "<PARAMETER_NAME>"
+                    value = raw_tc_params.get(f"{tc_name}.{key}", raw_tc_params.get(key, None))
+                    if value is None:
+                        continue
 
-                        # Cast string values to the appropriate type
-                        if isinstance(value, str) and cast is not str:
-                            if cast is bool:
-                                value = strtobool(value)
-                            else:
-                                value = cast(value)
+                    # Cast string values to the appropriate type
+                    if isinstance(value, str) and cast is not str:
+                        if cast is bool:
+                            value = strtobool(value)
+                        else:
+                            value = cast(value)
 
-                        log.debug(f"Parameter {key}={value}")
-                        params[key] = value
+                    log.debug(f"Parameter {key}={value}")
+                    params[key] = value
 
-                    # Declare an intermediate function (this allows us to wrap
-                    # with a optional timeout)
-                    async def _inner():
-                        await self._func(tb, log, *args, **kwargs, **params)
-                        await tb.close_down(loops=shutdown_loops, delay=shutdown_delay)
+                # Declare an intermediate function (this allows us to wrap
+                # with a optional timeout)
+                async def _inner():
+                    await func(tb, log, *args, **kwargs, **params)
+                    await tb.close_down(loops=shutdown_loops, delay=shutdown_delay)
 
-                    # Run with a timeout if specified
-                    postponed = None
-                    if timeout is None:
-                        await _inner()
-                    else:
-                        try:
-                            await with_timeout(_inner(), timeout, "ns")
-                        except SimTimeoutError as e:
-                            postponed = e
-                            tb._orch_log.error(f"Simulation timed out after {timeout} ns")
-                            # List any busy drivers
-                            for name, driver in tb._components.items():
-                                if isinstance(driver, BaseDriver) and driver.queued > 0:
-                                    tb._orch_log.info(
-                                        f"Driver {name} has {driver.queued} "
-                                        f"items remaining in its queue"
-                                    )
+                # Run with a timeout if specified
+                postponed = None
+                if timeout is None:
+                    await _inner()
+                else:
+                    try:
+                        await with_timeout(_inner(), timeout, "ns")
+                    except SimTimeoutError as e:
+                        postponed = e
+                        tb._orch_log.error(f"Simulation timed out after {timeout} ns")
+                        # List any busy drivers
+                        for name, driver in tb._components.items():
+                            if isinstance(driver, BaseDriver) and driver.queued > 0:
+                                tb._orch_log.info(
+                                    f"Driver {name} has {driver.queued} "
+                                    f"items remaining in its queue"
+                                )
 
-                    # Report status of scoreboard channels
-                    for _, channel in tb.scoreboard.channels.items():
-                        channel.report()
+                # Report status of scoreboard channels
+                for _, channel in tb.scoreboard.channels.items():
+                    channel.report()
 
-                    # When using postmortem, catch errors before exit
-                    if tb.get_parameter("postmortem", False) and (
-                        (postponed is not None) or not tb.scoreboard.result
-                    ):
-                        tb._orch_log.warning("Entering postmortem")
-                        breakpoint()
+                # When using postmortem, catch errors before exit
+                if tb.get_parameter("postmortem", False) and (
+                    (postponed is not None) or not tb.scoreboard.result
+                ):
+                    tb._orch_log.warning("Entering postmortem")
+                    breakpoint()
 
-                    # If an exception has been postponed, re-raise it now
-                    if postponed is not None:
-                        raise postponed
+                # If an exception has been postponed, re-raise it now
+                if postponed is not None:
+                    raise postponed
 
-                    # Check the result
-                    assert tb.scoreboard.result, "Scoreboard reported test failure"
+                # Check the result
+                assert tb.scoreboard.result, "Scoreboard reported test failure"
 
-                return cocotb.decorators._RunningTest(_run_test(), self)
+            _imposter.__module__ = cls.__module__.split(".")[0]
+            _imposter.__name__ = func.__name__
+            _imposter.__qualname__ = func.__qualname__
+            # Support for cocotb 2.X
+            if hasattr(cocotb, "_regression_manager"):
+                cocotb._regression_manager.register_test(cocotb.test(_imposter))
+            # Fallback for cocotb 1.X
+            else:
+                return cocotb.test(_imposter)
 
-        def _do_decorate(func):
-            # _testcase acts as a function which returns a decorator, hence the
-            # double function call
-            return _Testcase(*args, **kwargs)(func)
-
-        return _do_decorate
+        return _inner
 
     @classmethod
     def parameter(cls, name: str, cast: Callable[[str], Any]) -> Callable:

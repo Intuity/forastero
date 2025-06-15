@@ -18,7 +18,7 @@ from random import Random
 from typing import Any
 
 import cocotb
-from cocotb.handle import ModifiableObject
+from cocotb.handle import SimHandleBase
 from cocotb.queue import Queue
 from cocotb.triggers import Event, RisingEdge
 from cocotb.utils import get_sim_time
@@ -59,8 +59,8 @@ class BaseDriver(Component):
         self,
         tb: Any,
         io: BaseIO,
-        clk: ModifiableObject,
-        rst: ModifiableObject,
+        clk: SimHandleBase,
+        rst: SimHandleBase,
         random: Random | None = None,
         name: str | None = None,
         blocking: bool = True,

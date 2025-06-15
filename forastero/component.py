@@ -16,7 +16,8 @@ import asyncio
 from random import Random
 from typing import Any, ClassVar
 
-from cocotb.handle import ModifiableObject
+# TODO @intuity: Is there a better type
+from cocotb.handle import SimHandleBase
 from cocotb.triggers import RisingEdge
 
 from .event import EventEmitter
@@ -44,8 +45,8 @@ class Component(EventEmitter):
         self,
         tb: Any,
         io: BaseIO,
-        clk: ModifiableObject,
-        rst: ModifiableObject,
+        clk: SimHandleBase,
+        rst: SimHandleBase,
         random: Random | None = None,
         name: str | None = None,
         blocking: bool = True,

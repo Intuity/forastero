@@ -13,14 +13,15 @@
 # limitations under the License.
 
 import logging
+from asyncio import Lock
 from collections import defaultdict
 from collections.abc import Callable
 from enum import Enum, auto
+from logging import Logger
 from typing import Any
 
 import cocotb
-from cocotb.log import SimLog
-from cocotb.triggers import Event, First, Lock, RisingEdge, Timer
+from cocotb.triggers import Event, First, RisingEdge, Timer
 from cocotb.utils import get_sim_time
 
 from .monitor import BaseMonitor, MonitorEvent
@@ -146,7 +147,7 @@ class Channel:
         self,
         name: str,
         monitor: BaseMonitor,
-        log: SimLog,
+        log: Logger,
         filter_fn: Callable | None,
         timeout_ns: int | None = None,
         polling_ns: int = 100,
@@ -411,7 +412,7 @@ class FunnelChannel(Channel):
         self,
         name: str,
         monitor: BaseMonitor,
-        log: SimLog,
+        log: Logger,
         filter_fn: Callable | None,
         ref_queues: list[str] | tuple[str],
         timeout_ns: int | None = None,
