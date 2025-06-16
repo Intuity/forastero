@@ -598,12 +598,7 @@ class BaseBench:
             _imposter.__module__ = cls.__module__.split(".")[0]
             _imposter.__name__ = func.__name__
             _imposter.__qualname__ = func.__qualname__
-            # Support for cocotb 2.X
-            if hasattr(cocotb, "_regression_manager"):
-                cocotb._regression_manager.register_test(cocotb.test(_imposter))
-            # Fallback for cocotb 1.X
-            else:
-                return cocotb.test(_imposter)
+            return cocotb.test(_imposter)
 
         return _inner
 
