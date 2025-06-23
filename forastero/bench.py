@@ -62,12 +62,13 @@ class BaseBench:
     """
     Base class for a Forastero testbench
 
-    :param dut:        Handle to the DUT, provided by cocotb
-    :param clk:        Handle to the primary clock signal
-    :param rst:        Handle to the primary reset signal
-    :param clk_drive:  Whether the primary clock signal should be driven
-    :param clk_period: Tick period for the primary clock
-    :param clk_units:  Units of the primary clock's period
+    :param dut:               Handle to the DUT, provided by cocotb
+    :param clk:               Handle to the primary clock signal
+    :param rst:               Handle to the primary reset signal
+    :param reset_active_high: Whether the reset is active high (or low)
+    :param clk_drive:         Whether the primary clock signal should be driven
+    :param clk_period:        Tick period for the primary clock
+    :param clk_units:         Units of the primary clock's period
     """
 
     TEST_REQ_PARAMS: ClassVar[dict[Any, list[tuple[str, Callable[[str], Any]]]]] = defaultdict(list)
