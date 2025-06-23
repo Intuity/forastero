@@ -106,7 +106,7 @@ class BaseBench:
         # Promote clock & reset
         self.clk = clk
         self.rst = rst
-    
+
         self.rst_active_high = rst_active_high
 
         # Clock driving
@@ -160,7 +160,7 @@ class BaseBench:
             return self.log
         else:
             return self.log.getChild(".".join(scope))
-        
+
     @property
     def rst_active_value(self):
         return int(self.rst_active_high)
