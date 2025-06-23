@@ -117,7 +117,7 @@ class BaseDriver(Component):
             # Pickup next event to drive
             obj = await self._queue.get()
             # Wait until reset is deasserted
-            while self.rst.value == 1:
+            while self.rst.value == int(self.tb.reset_active_high):
                 await RisingEdge(self.clk)
             # Lock out the driver (prevents shutdown mid-stimulus)
             await self.lock()

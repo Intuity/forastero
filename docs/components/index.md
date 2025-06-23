@@ -39,7 +39,7 @@ class StreamMonitor(BaseMonitor):
     async def monitor(self, capture) -> None:
         while True:
             await RisingEdge(self.clk)
-            if self.rst.value == 1:
+            if self.rst.value == self.reset_state['active']:
                 continue
             if self.io.get("valid", 1) and self.io.get("ready", 1):
                 self.log.debug("Hello! I saw a transaction!")

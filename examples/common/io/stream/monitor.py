@@ -25,7 +25,7 @@ class StreamMonitor(BaseMonitor):
     async def monitor(self, capture: Callable) -> None:
         while True:
             await RisingEdge(self.clk)
-            if self.rst.value == 1:
+            if self.rst.value == int(self.tb.reset_active_high):
                 continue
             if self.io.get("valid", 1) and self.io.get("ready", 1):
                 capture(StreamTransaction(data=self.io.get("data", 0)))

@@ -95,6 +95,7 @@ class BaseBench:
         dut: HierarchyObject,
         clk: SimHandleBase | None = None,
         rst: SimHandleBase | None = None,
+        reset_active_high: bool = True,
         clk_drive: bool = True,
         clk_period: float = 1,
         clk_units: str = "ns",
@@ -104,6 +105,9 @@ class BaseBench:
         # Promote clock & reset
         self.clk = clk
         self.rst = rst
+    
+        self.reset_active_high = reset_active_high
+
         # Clock driving
         self.clk_drive = clk_drive
         self.clk_period = clk_period
@@ -188,7 +192,7 @@ class BaseBench:
 
     async def initialise(self) -> None:
         """Initialise the DUT's I/O"""
-        self.rst.value = 1
+        self.rst.value = int(self.reset_active_high)
         for comp in self._components.values():
             comp.io.initialise(IORole.opposite(comp.io.role))
 
@@ -201,7 +205,7 @@ class BaseBench:
         :param wait_after:  Clock cycles to wait after lowering reset (defaults to 1)
         """
         # Drive reset high
-        self.rst.value = 1
+        self.rst.value = int(self.reset_active_high)
         # Initialise I/O
         if init:
             await self.initialise()
@@ -209,7 +213,7 @@ class BaseBench:
         if wait_during > 0:
             await ClockCycles(self.clk, wait_during)
         # Drop reset
-        self.rst.value = 0
+        self.rst.value = int(not self.reset_active_high)
         # Wait for a bit
         if wait_after > 0:
             self.info(f"Waiting for {wait_after} cycles")
