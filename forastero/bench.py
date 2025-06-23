@@ -62,13 +62,13 @@ class BaseBench:
     """
     Base class for a Forastero testbench
 
-    :param dut:               Handle to the DUT, provided by cocotb
-    :param clk:               Handle to the primary clock signal
-    :param rst:               Handle to the primary reset signal
-    :param reset_active_high: Whether the reset is active high (or low)
-    :param clk_drive:         Whether the primary clock signal should be driven
-    :param clk_period:        Tick period for the primary clock
-    :param clk_units:         Units of the primary clock's period
+    :param dut:             Handle to the DUT, provided by cocotb
+    :param clk:             Handle to the primary clock signal
+    :param rst:             Handle to the primary reset signal
+    :param rst_active_high: Whether the reset is active high (or low)
+    :param clk_drive:       Whether the primary clock signal should be driven
+    :param clk_period:      Tick period for the primary clock
+    :param clk_units:       Units of the primary clock's period
     """
 
     TEST_REQ_PARAMS: ClassVar[dict[Any, list[tuple[str, Callable[[str], Any]]]]] = defaultdict(list)
@@ -96,7 +96,7 @@ class BaseBench:
         dut: HierarchyObject,
         clk: SimHandleBase | None = None,
         rst: SimHandleBase | None = None,
-        reset_active_high: bool = True,
+        rst_active_high: bool = True,
         clk_drive: bool = True,
         clk_period: float = 1,
         clk_units: str = "ns",
@@ -107,7 +107,7 @@ class BaseBench:
         self.clk = clk
         self.rst = rst
     
-        self.reset_active_high = reset_active_high
+        self.rst_active_high = rst_active_high
 
         # Clock driving
         self.clk_drive = clk_drive
@@ -160,6 +160,14 @@ class BaseBench:
             return self.log
         else:
             return self.log.getChild(".".join(scope))
+        
+    @property
+    def rst_active_value(self):
+        int(self.rst_active_high)
+
+    @property
+    def rst_inactive_value(self):
+        int(not self.rst_active_high)
 
     @classmethod
     @functools.cache
@@ -193,7 +201,7 @@ class BaseBench:
 
     async def initialise(self) -> None:
         """Initialise the DUT's I/O"""
-        self.rst.value = int(self.reset_active_high)
+        self.rst.value = self.rst_active_value
         for comp in self._components.values():
             comp.io.initialise(IORole.opposite(comp.io.role))
 
@@ -206,7 +214,7 @@ class BaseBench:
         :param wait_after:  Clock cycles to wait after lowering reset (defaults to 1)
         """
         # Drive reset high
-        self.rst.value = int(self.reset_active_high)
+        self.rst.value = self.rst_active_value
         # Initialise I/O
         if init:
             await self.initialise()
@@ -214,7 +222,7 @@ class BaseBench:
         if wait_during > 0:
             await ClockCycles(self.clk, wait_during)
         # Drop reset
-        self.rst.value = int(not self.reset_active_high)
+        self.rst.value = self.rst_inactive_value
         # Wait for a bit
         if wait_after > 0:
             self.info(f"Waiting for {wait_after} cycles")
