@@ -163,11 +163,11 @@ class BaseBench:
         
     @property
     def rst_active_value(self):
-        int(self.rst_active_high)
+        return int(self.rst_active_high)
 
     @property
     def rst_inactive_value(self):
-        int(not self.rst_active_high)
+        return int(not self.rst_active_high)
 
     @classmethod
     @functools.cache
