@@ -125,7 +125,7 @@ class BaseDriver(Component):
             self._queue.push(transaction)
             self.publish(DriverEvent.ENQUEUE, transaction)
             _c_event = None
-            if wait_for and wait_for._f_event is DriverEvent.ENQUEUE:
+            if wait_for is DriverEvent.ENQUEUE:
                 _c_event = Event()
                 _c_event.set()
             # Return the cocotb Event (if it was set)
