@@ -105,31 +105,39 @@ class BaseDriver(Component):
             raise TypeError(
                 f"Transaction objects should inherit from BaseTransaction unlike {transaction}"
             )
+        f_event, c_event = None, None
+        if wait_for is not None:
+            f_event = wait_for
+            c_event = Event()
+        # Handle a pure transaction
         if isinstance(transaction, BaseTransaction):
             # Does this transaction need an event?
             if wait_for is not None:
-                transaction._f_event = wait_for
-                transaction._c_event = Event()
-            # Queue up the transaction with no delay
-            self._queue.push(transaction)
-            # Notify any enqueue subscribers
-            self.publish(DriverEvent.ENQUEUE, transaction)
-            if transaction._f_event is DriverEvent.ENQUEUE:
-                transaction._c_event.set()
-            # Return the cocotb Event (if it was set)
-            return transaction._c_event
-        else:
-            # Add wait_for and iterable to a namedTuple
+                transaction._f_event = f_event
+                transaction._c_event = c_event
+        # Handle a transaction iterable
+        elif isinstance(transaction, Iterable):
+            # Wrap iterable in EnqueuedIterable
             transaction = EnqueuedIterable(iterable=transaction, wait_for=wait_for)
             # Queue up the transaction with no delay
             self._queue.push(transaction)
             self.publish(DriverEvent.ENQUEUE, transaction)
-            _c_event = None
-            if wait_for is DriverEvent.ENQUEUE:
-                _c_event = Event()
-                _c_event.set()
-            # Return the cocotb Event (if it was set)
-            return _c_event
+        # Bail
+        else:
+            raise TypeError(
+                 f"Transaction objects should inherit from BaseTransaction or be "
+                 f"an iterable unlike {transaction}"
+             )
+        # Queue up the transaction with no delay
+        self._queue.push(transaction)
+        # Notify any enqueue subscribers
+        self.publish(DriverEvent.ENQUEUE, transaction)
+        # Immediately set event if waiting for enqueue
+        if f_event is DriverEvent.ENQUEUE:
+            c_event = Event()
+            c_event.set()
+        # Return the cocotb Event (if it was set)
+        return c_event
 
     async def get_from_queue(self) -> BaseTransaction:
         """
