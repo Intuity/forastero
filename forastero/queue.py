@@ -22,7 +22,7 @@ class Queue:
     def __len__(self) -> int:
         return self.level
 
-    def __getitem__(self, key) -> BaseTransaction | list[BaseTransaction]:
+    def __getitem__(self, key) -> Any:
         return self._entries[key]
 
     @property
