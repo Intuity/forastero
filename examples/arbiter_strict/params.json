@@ -8,6 +8,8 @@
     "testcases": {
         "random.packets": 500,
         "random.delay": 6000,
+        "random_iter.packets": 500,
+        "random_iter.delay": 6000,
         "random_seq.single_pkts": 2000,
         "random_seq.burst_count": 10,
         "random_seq.burst_min": 100,
