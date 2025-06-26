@@ -100,11 +100,6 @@ class BaseDriver(Component):
         :param wait_for:    When defined, this will return an event that can be
                             monitored for a given transaction event occurring
         """
-        # Sanity check
-        if not isinstance(transaction, BaseTransaction | Iterable):
-            raise TypeError(
-                f"Transaction objects should inherit from BaseTransaction unlike {transaction}"
-            )
         f_event, c_event = None, None
         if wait_for is not None:
             f_event = wait_for
@@ -119,27 +114,23 @@ class BaseDriver(Component):
         elif isinstance(transaction, Iterable):
             # Wrap iterable in EnqueuedIterable
             transaction = EnqueuedIterable(iterable=transaction, wait_for=wait_for)
-            # Queue up the transaction with no delay
-            self._queue.push(transaction)
-            self.publish(DriverEvent.ENQUEUE, transaction)
         # Bail
         else:
             raise TypeError(
-                 f"Transaction objects should inherit from BaseTransaction or be "
-                 f"an iterable unlike {transaction}"
-             )
+                f"Transaction objects should inherit from BaseTransaction or be "
+                f"an iterable unlike {transaction}"
+            )
         # Queue up the transaction with no delay
         self._queue.push(transaction)
         # Notify any enqueue subscribers
         self.publish(DriverEvent.ENQUEUE, transaction)
         # Immediately set event if waiting for enqueue
         if f_event is DriverEvent.ENQUEUE:
-            c_event = Event()
             c_event.set()
-        # Return the cocotb Event (if it was set)
+        # Return the cocotb Event
         return c_event
 
-    async def get_from_queue(self) -> BaseTransaction:
+    async def _get_from_queue(self) -> BaseTransaction:
         """
         Fetch next item from the queue.
         Process iterables and add events to yielded BaseTransaction
@@ -158,6 +149,11 @@ class BaseDriver(Component):
                         if not hasattr(obj, "_iterator"):
                             obj._iterator = iter(obj.iterable)
                         next_item = next(obj._iterator)
+                        if not isinstance(next_item, BaseTransaction):
+                            raise TypeError(
+                                "Transaction objects should inherit from BaseTransaction",
+                                f" unlike {next_item}",
+                            )
                         # If wait_for is set, attach to the transaction
                         if obj.wait_for is not None and isinstance(next_item, BaseTransaction):
                             next_item._f_event = obj.wait_for
@@ -176,7 +172,7 @@ class BaseDriver(Component):
         self._ready.set()
         while True:
             # Pickup next event to drive
-            obj = await self.get_from_queue()
+            obj = await self._get_from_queue()
             # Wait until reset is deasserted
             while self.rst.value == self.tb.rst_active_value:
                 await RisingEdge(self.clk)
