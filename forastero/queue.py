@@ -2,8 +2,6 @@ from typing import Any
 
 from cocotb.triggers import Event
 
-from .transaction import BaseTransaction
-
 
 class QueueEmptyError(Exception):
     pass
@@ -24,6 +22,10 @@ class Queue:
 
     def __getitem__(self, key) -> Any:
         return self._entries[key]
+
+    @property
+    def empty(self):
+        return len(self._entries) == 0
 
     @property
     def level(self) -> int:

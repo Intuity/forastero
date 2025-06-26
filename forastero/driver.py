@@ -80,7 +80,7 @@ class BaseDriver(Component):
     @property
     def busy(self) -> bool:
         """Busy when either locked or the queue has outstanding entries"""
-        return (self._queue.level > 0) and super().busy
+        return not self._queue.empty and super().busy
 
     @property
     def queued(self) -> int:
