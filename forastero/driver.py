@@ -13,18 +13,19 @@
 # limitations under the License.
 
 import dataclasses
+from collections.abc import Iterable
 from enum import Enum, auto
 from random import Random
 from typing import Any
 
 import cocotb
 from cocotb.handle import SimHandleBase
-from cocotb.queue import Queue
 from cocotb.triggers import Event, RisingEdge
 from cocotb.utils import get_sim_time
 
 from .component import Component
 from .io import BaseIO
+from .queue import Queue
 from .transaction import BaseTransaction
 
 
@@ -40,6 +41,12 @@ class DriverEvent(Enum):
 @dataclasses.dataclass()
 class DriverStatistics:
     dequeued: int = 0
+
+
+@dataclasses.dataclass()
+class EnqueuedIterable:
+    iterable: Iterable
+    wait_for: DriverEvent
 
 
 class BaseDriver(Component):
@@ -73,40 +80,86 @@ class BaseDriver(Component):
     @property
     def busy(self) -> bool:
         """Busy when either locked or the queue has outstanding entries"""
-        return not self._queue.empty() and super().busy
+        return (self._queue.level > 0) and super().busy
 
     @property
     def queued(self) -> int:
         """Return how many entries are queued up"""
-        return self._queue.qsize()
+        return self._queue.level
 
     def enqueue(
-        self, transaction: BaseTransaction, wait_for: DriverEvent | None = None
+        self,
+        transaction: BaseTransaction | Iterable[BaseTransaction],
+        wait_for: DriverEvent | None = None,
     ) -> Event | None:
         """
         Queue up a transaction to be driven onto the interface
 
-        :param transaction: Transaction to queue, must inherit from BaseTransaction
+        :param transaction: Transaction to queue, must inherit from BaseTransaction,
+                            or be an iterable which yields BaseTransaction
         :param wait_for:    When defined, this will return an event that can be
                             monitored for a given transaction event occurring
         """
         # Sanity check
-        if not isinstance(transaction, BaseTransaction):
+        if not isinstance(transaction, BaseTransaction | Iterable):
             raise TypeError(
                 f"Transaction objects should inherit from BaseTransaction unlike {transaction}"
             )
-        # Does this transaction need an event?
-        if wait_for is not None:
-            transaction._f_event = wait_for
-            transaction._c_event = Event()
-        # Queue up the transaction with no delay
-        self._queue.put_nowait(transaction)
-        # Notify any enqueue subscribers
-        self.publish(DriverEvent.ENQUEUE, transaction)
-        if transaction._f_event is DriverEvent.ENQUEUE:
-            transaction._c_event.set()
-        # Return the cocotb Event (if it was set)
-        return transaction._c_event
+        if isinstance(transaction, BaseTransaction):
+            # Does this transaction need an event?
+            if wait_for is not None:
+                transaction._f_event = wait_for
+                transaction._c_event = Event()
+            # Queue up the transaction with no delay
+            self._queue.push(transaction)
+            # Notify any enqueue subscribers
+            self.publish(DriverEvent.ENQUEUE, transaction)
+            if transaction._f_event is DriverEvent.ENQUEUE:
+                transaction._c_event.set()
+            # Return the cocotb Event (if it was set)
+            return transaction._c_event
+        else:
+            # Add wait_for and iterable to a namedTuple
+            transaction = EnqueuedIterable(iterable=transaction, wait_for=wait_for)
+            # Queue up the transaction with no delay
+            self._queue.push(transaction)
+            self.publish(DriverEvent.ENQUEUE, transaction)
+            _c_event = None
+            if wait_for and wait_for._f_event is DriverEvent.ENQUEUE:
+                _c_event = Event()
+                _c_event.set()
+            # Return the cocotb Event (if it was set)
+            return _c_event
+
+    async def get_from_queue(self) -> BaseTransaction:
+        """
+        Fetch next item from the queue.
+        Process iterables and add events to yielded BaseTransaction
+        """
+        while True:
+            await self._queue.wait_for_not_empty()
+            obj = self._queue.peek()
+            if isinstance(obj, BaseTransaction):
+                obj = await self._queue.pop()
+                return obj
+            else:
+                # obj is an EnqueuedIterable - yield from iterable, append events (if any)
+                # and pop from queue when exhausted
+                while True:
+                    try:
+                        if not hasattr(obj, "_iterator"):
+                            obj._iterator = iter(obj.iterable)
+                        next_item = next(obj._iterator)
+                        # If wait_for is set, attach to the transaction
+                        if obj.wait_for is not None and isinstance(next_item, BaseTransaction):
+                            next_item._f_event = obj.wait_for
+                            next_item._c_event = Event()
+                        return next_item
+                    except StopIteration:
+                        # Remove the exhausted EnqueuedIterable from the queue
+                        await self._queue.pop()
+                        # After popping, break to outer loop to process the new front item
+                        break
 
     async def _driver_loop(self) -> None:
         """Main loop for driving transactions onto the interface"""
@@ -115,7 +168,7 @@ class BaseDriver(Component):
         self._ready.set()
         while True:
             # Pickup next event to drive
-            obj = await self._queue.get()
+            obj = await self.get_from_queue()
             # Wait until reset is deasserted
             while self.rst.value == self.tb.rst_active_value:
                 await RisingEdge(self.clk)
