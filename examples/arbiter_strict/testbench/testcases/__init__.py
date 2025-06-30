@@ -13,5 +13,6 @@
 # limitations under the License.
 
 from .random import *  # noqa: F403
+from .random_iterable import *  # noqa: F403
 from .sequences import *  # noqa: F403
 from .smoke import *  # noqa: F403
