@@ -28,8 +28,8 @@ class DataEvent(Event):
         self.data = None
 
     def set(self, data=None):
-        self.data = data
         super().set()
+        self.data = data
 
 
 class EventEmitter:
