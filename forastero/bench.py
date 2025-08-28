@@ -35,10 +35,12 @@ from cocotb.triggers import ClockCycles, Event, with_timeout
 try:
     from cocotb.logging import SimLogFormatter, SimTimeContextFilter
     from cocotb.triggers import SimTimeoutError
+    from cocotb._testfactory import TestFactory
 # Fallback for cocotb 1.X
 except ImportError:
     from cocotb.log import SimLogFormatter, SimTimeContextFilter
     from cocotb.result import SimTimeoutError
+    from cocotb.regression import TestFactory
 
 from .component import Component
 from .driver import BaseDriver
@@ -456,8 +458,27 @@ class BaseBench:
                                   (defaults to 1)
         """
 
-        def _inner(func):
-            async def _imposter(dut):
+        def _inner(func): 
+            tc_name = func.__name__
+            # Are there any parameters for this test?
+            raw_tc_params = cls.get_parameter("testcases")
+            params = {}
+            for key, cast in cls.TEST_REQ_PARAMS[func]:
+                # First look for "<TESTCASE_NAME>.<PARAMETER_NAME>"
+                # but fall back to just "<PARAMETER_NAME>"
+                value = raw_tc_params.get(f"{tc_name}.{key}", raw_tc_params.get(key, None))
+                if value is None:
+                    continue
+
+                # Cast string values to the appropriate type
+                if isinstance(value, str) and cast is not str:
+                    if cast is bool:
+                        value = strtobool(value)
+                    else:
+                        value = cast(value)
+                params[key] = value
+
+            async def _imposter(dut, params=params, tc_name=tc_name):
                 # Clear components registered from previous runs
                 Component.COMPONENTS.clear()
 
@@ -470,7 +491,6 @@ class BaseBench:
                     raise e
 
                 # Log what's going on
-                tc_name = func.__name__
                 tb._orch_log.info(f"Preparing testcase {tc_name}")
 
                 # Check all components have been registered
@@ -545,26 +565,8 @@ class BaseBench:
 
                 # Create a forked log
                 log = tb.fork_log("test", tc_name)
-
-                # Are there any parameters for this test?
-                raw_tc_params = cls.get_parameter("testcases")
-                params = {}
-                for key, cast in cls.TEST_REQ_PARAMS[func]:
-                    # First look for "<TESTCASE_NAME>.<PARAMETER_NAME>"
-                    # but fall back to just "<PARAMETER_NAME>"
-                    value = raw_tc_params.get(f"{tc_name}.{key}", raw_tc_params.get(key, None))
-                    if value is None:
-                        continue
-
-                    # Cast string values to the appropriate type
-                    if isinstance(value, str) and cast is not str:
-                        if cast is bool:
-                            value = strtobool(value)
-                        else:
-                            value = cast(value)
-
+                for key, val in params.items():
                     log.debug(f"Parameter {key}={value}")
-                    params[key] = value
 
                 # Declare an intermediate function (this allows us to wrap
                 # with a optional timeout)
@@ -611,6 +613,8 @@ class BaseBench:
             _imposter.__module__ = cls.__module__.split(".")[0]
             _imposter.__name__ = func.__name__
             _imposter.__qualname__ = func.__qualname__
+            #tf = TestFactory(_imposter)
+            #return tf.generate_tests()
             return cocotb.test(_imposter)
 
         return _inner
