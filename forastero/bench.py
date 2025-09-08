@@ -35,7 +35,7 @@ from cocotb.triggers import ClockCycles, Event, with_timeout
 try:
     from cocotb.logging import SimLogFormatter, SimTimeContextFilter
     from cocotb.triggers import SimTimeoutError
-    from cocotb._testfactory import TestFactory
+    from cocotb.regression import Parameterized
 # Fallback for cocotb 1.X
 except ImportError:
     from cocotb.log import SimLogFormatter, SimTimeContextFilter
@@ -457,7 +457,7 @@ class BaseBench:
         :param reset_wait_after:  Clock cycles to wait after lowering reset
                                   (defaults to 1)
         """
-
+        @functools.wraps(cls)
         def _inner(func): 
             tc_name = func.__name__
             # Are there any parameters for this test?
@@ -613,9 +613,10 @@ class BaseBench:
             _imposter.__module__ = cls.__module__.split(".")[0]
             _imposter.__name__ = func.__name__
             _imposter.__qualname__ = func.__qualname__
-            #tf = TestFactory(_imposter)
-            #return tf.generate_tests()
-            return cocotb.test(_imposter)
+            tf = TestFactory(_imposter)
+            for param, values in params.items():
+                tf.add_option(name=param, optionlist=[values])
+            tf.generate_tests()
 
         return _inner
 
