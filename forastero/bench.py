@@ -16,6 +16,7 @@ import asyncio
 import functools
 import json
 import logging
+import inspect
 import os
 import random
 import traceback
@@ -457,7 +458,6 @@ class BaseBench:
         :param reset_wait_after:  Clock cycles to wait after lowering reset
                                   (defaults to 1)
         """
-        @functools.wraps(cls)
         def _inner(func): 
             tc_name = func.__name__
             # Are there any parameters for this test?
@@ -477,7 +477,6 @@ class BaseBench:
                     else:
                         value = cast(value)
                 params[key] = value
-
             async def _imposter(dut, params=params, tc_name=tc_name):
                 # Clear components registered from previous runs
                 Component.COMPONENTS.clear()
@@ -609,14 +608,17 @@ class BaseBench:
 
                 # Check the result
                 assert tb.scoreboard.result, "Scoreboard reported test failure"
-
             _imposter.__module__ = cls.__module__.split(".")[0]
             _imposter.__name__ = func.__name__
             _imposter.__qualname__ = func.__qualname__
-            tf = TestFactory(_imposter)
-            for param, values in params.items():
-                tf.add_option(name=param, optionlist=[values])
-            tf.generate_tests()
+            mod = inspect.getmodule(_imposter)
+            setattr(
+                mod,
+                func.__name__ + "_var",
+                cocotb.test(_imposter)
+            )
+            print(f"Setting function {func.__name__} in {mod}.")
+            #return cocotb.test(_imposter)
 
         return _inner
 
