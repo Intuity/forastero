@@ -459,25 +459,7 @@ class BaseBench:
                                   (defaults to 1)
         """
         def _inner(func): 
-            tc_name = func.__name__
-            # Are there any parameters for this test?
-            raw_tc_params = cls.get_parameter("testcases")
-            params = {}
-            for key, cast in cls.TEST_REQ_PARAMS[func]:
-                # First look for "<TESTCASE_NAME>.<PARAMETER_NAME>"
-                # but fall back to just "<PARAMETER_NAME>"
-                value = raw_tc_params.get(f"{tc_name}.{key}", raw_tc_params.get(key, None))
-                if value is None:
-                    continue
-
-                # Cast string values to the appropriate type
-                if isinstance(value, str) and cast is not str:
-                    if cast is bool:
-                        value = strtobool(value)
-                    else:
-                        value = cast(value)
-                params[key] = value
-            async def _imposter(dut, params=params, tc_name=tc_name):
+            async def _imposter_inner(dut, params, tc_name):
                 # Clear components registered from previous runs
                 Component.COMPONENTS.clear()
 
@@ -608,17 +590,36 @@ class BaseBench:
 
                 # Check the result
                 assert tb.scoreboard.result, "Scoreboard reported test failure"
+            tc_name = func.__name__
+            # Are there any parameters for this test?
+            raw_tc_params = cls.get_parameter("testcases")
+            params = {}
+            for key, cast in cls.TEST_REQ_PARAMS[func]:
+                # First look for "<TESTCASE_NAME>.<PARAMETER_NAME>"
+                # but fall back to just "<PARAMETER_NAME>"
+                value = raw_tc_params.get(f"{tc_name}.{key}", raw_tc_params.get(key, None))
+                if value is None:
+                    continue
+
+                # Cast string values to the appropriate type
+                if isinstance(value, str) and cast is not str:
+                    if cast is bool:
+                        value = strtobool(value)
+                    else:
+                        value = cast(value)
+                params[key] = value
+            async def _imposter(dut, params=params, tc_name=tc_name):
+                await _imposter_inner(dut, params, tc_name)
             _imposter.__module__ = cls.__module__.split(".")[0]
             _imposter.__name__ = func.__name__
             _imposter.__qualname__ = func.__qualname__
             mod = inspect.getmodule(_imposter)
+            # Creates a cocotb.test class that is found by the cocotb discovery mechanism
             setattr(
                 mod,
                 func.__name__ + "_var",
                 cocotb.test(_imposter)
             )
-            print(f"Setting function {func.__name__} in {mod}.")
-            #return cocotb.test(_imposter)
 
         return _inner
 
