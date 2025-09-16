@@ -20,6 +20,7 @@ import inspect
 import os
 import random
 import traceback
+import itertools
 from collections import defaultdict
 from collections.abc import Callable, Coroutine
 from logging import Logger
@@ -36,12 +37,10 @@ from cocotb.triggers import ClockCycles, Event, with_timeout
 try:
     from cocotb.logging import SimLogFormatter, SimTimeContextFilter
     from cocotb.triggers import SimTimeoutError
-    from cocotb.regression import Parameterized
 # Fallback for cocotb 1.X
 except ImportError:
     from cocotb.log import SimLogFormatter, SimTimeContextFilter
     from cocotb.result import SimTimeoutError
-    from cocotb.regression import TestFactory
 
 from .component import Component
 from .driver import BaseDriver
@@ -547,7 +546,7 @@ class BaseBench:
                 # Create a forked log
                 log = tb.fork_log("test", tc_name)
                 for key, val in params.items():
-                    log.debug(f"Parameter {key}={value}")
+                    log.debug(f"Parameter {key}={val}")
 
                 # Declare an intermediate function (this allows us to wrap
                 # with a optional timeout)
@@ -590,14 +589,14 @@ class BaseBench:
 
                 # Check the result
                 assert tb.scoreboard.result, "Scoreboard reported test failure"
-            tc_name = func.__name__
+            base_tc_name = func.__name__
             # Are there any parameters for this test?
             raw_tc_params = cls.get_parameter("testcases")
             params = {}
             for key, cast in cls.TEST_REQ_PARAMS[func]:
                 # First look for "<TESTCASE_NAME>.<PARAMETER_NAME>"
                 # but fall back to just "<PARAMETER_NAME>"
-                value = raw_tc_params.get(f"{tc_name}.{key}", raw_tc_params.get(key, None))
+                value = raw_tc_params.get(f"{base_tc_name}.{key}", raw_tc_params.get(key, None))
                 if value is None:
                     continue
 
@@ -608,19 +607,30 @@ class BaseBench:
                     else:
                         value = cast(value)
                 params[key] = value
-            async def _imposter(dut, params=params, tc_name=tc_name):
-                await _imposter_inner(dut, params, tc_name)
-            _imposter.__module__ = cls.__module__.split(".")[0]
-            _imposter.__name__ = func.__name__
-            _imposter.__qualname__ = func.__qualname__
-            mod = inspect.getmodule(_imposter)
-            # Creates a cocotb.test class that is found by the cocotb discovery mechanism
-            setattr(
-                mod,
-                func.__name__ + "_var",
-                cocotb.test(_imposter)
-            )
-
+                      
+            # Generate test cases for all permutations of parameter values
+            keys, values = zip(*params.items()) if len(params) > 0 else ([], [])
+            values = [val if isinstance(val, list) else [val] for val in values]
+            permutations_dicts = [dict(zip(keys, v)) for v in itertools.product(*values)]
+            for params in permutations_dicts:
+                if len(permutations_dicts) == 1:
+                    params_name = ""  # If there are no list parameters use "normal" naming
+                else:
+                    params_name = functools.reduce(lambda x,y: x + '_' + y , [f"{str(key)}_{str(val)}" for key,val in params.items()])
+                    params_name = '_' + params_name
+                tc_name = base_tc_name + params_name
+                async def _imposter(dut, params=params, tc_name=tc_name):
+                    await _imposter_inner(dut, params, tc_name)
+                _imposter.__module__ = cls.__module__.split(".")[0]
+                _imposter.__name__ = func.__name__ + params_name 
+                _imposter.__qualname__ = func.__qualname__ + params_name 
+                mod = inspect.getmodule(_imposter)
+                # Creates a cocotb.test class that is found by the cocotb discovery mechanism
+                setattr(
+                    mod,
+                    func.__name__ + params_name + "_test",
+                    cocotb.test(_imposter)
+                )
         return _inner
 
     @classmethod
