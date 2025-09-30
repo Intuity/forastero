@@ -634,8 +634,11 @@ class BaseBench:
                 _imposter.__name__ = func.__name__ + params_name
                 _imposter.__qualname__ = func.__qualname__ + params_name
                 mod = inspect.getmodule(_imposter)
-                # Creates a cocotb.test class that is found by the cocotb discovery mechanism
-                setattr(mod, func.__name__ + params_name + "_test", cocotb.test(_imposter))
+                if len(permutations_dicts) == 1:
+                    return cocotb.test(_imposter)
+                else:
+                    # Creates a cocotb.test class that is found by the cocotb discovery mechanism
+                    setattr(mod, func.__name__ + params_name, cocotb.test(_imposter))
 
         return _inner
 
