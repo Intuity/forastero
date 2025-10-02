@@ -85,8 +85,9 @@ endmodule : arbiter
 
 This style is evidently opinionated, but not without reason as it makes it clear
 the exact purpose and direction of any signal within a line without having to
-cross-reference the port declaration. If it is not to your taste, the code for
-the `BaseIO` object is easily extensible.
+cross-reference the port declaration. If it is not to your taste, you can use
+[IOStyles](https://forastero.intuity.io/components/io/#io-naming-style) to 
+customise how signals are mapped.
 
 ### Writing Testcases
 
