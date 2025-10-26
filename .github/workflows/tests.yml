@@ -17,11 +17,21 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: 3.11
-      - name : Setup Icarus Verilog
+      - name : Setup Verilator 5.040
         shell: bash
         run  : |
           sudo apt update -y
-          sudo apt install -y verilator
+          sudo apt-get install -y git help2man perl python3 make autoconf \
+                                  g++ flex bison ccache libgoogle-perftools-dev \
+                                  numactl perl-doc libfl2 libfl-dev zlib1g \
+                                  zlib1g-dev
+          git clone https://github.com/verilator/verilator
+          cd verilator
+          git checkout v5.040
+          autoconf
+          ./configure
+          make -j $(nproc)
+          sudo make install
       - name : Install Poetry and environment
         shell: bash
         run  : |
