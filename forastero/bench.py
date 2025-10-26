@@ -14,6 +14,8 @@
 
 import asyncio
 import functools
+import inspect
+import itertools
 import json
 import logging
 import os
@@ -457,7 +459,7 @@ class BaseBench:
         """
 
         def _inner(func):
-            async def _imposter(dut):
+            async def _imposter_inner(dut, params, tc_name):
                 # Clear components registered from previous runs
                 Component.COMPONENTS.clear()
 
@@ -470,7 +472,6 @@ class BaseBench:
                     raise e
 
                 # Log what's going on
-                tc_name = func.__name__
                 tb._orch_log.info(f"Preparing testcase {tc_name}")
 
                 # Check all components have been registered
@@ -545,26 +546,8 @@ class BaseBench:
 
                 # Create a forked log
                 log = tb.fork_log("test", tc_name)
-
-                # Are there any parameters for this test?
-                raw_tc_params = cls.get_parameter("testcases")
-                params = {}
-                for key, cast in cls.TEST_REQ_PARAMS[func]:
-                    # First look for "<TESTCASE_NAME>.<PARAMETER_NAME>"
-                    # but fall back to just "<PARAMETER_NAME>"
-                    value = raw_tc_params.get(f"{tc_name}.{key}", raw_tc_params.get(key, None))
-                    if value is None:
-                        continue
-
-                    # Cast string values to the appropriate type
-                    if isinstance(value, str) and cast is not str:
-                        if cast is bool:
-                            value = strtobool(value)
-                        else:
-                            value = cast(value)
-
-                    log.debug(f"Parameter {key}={value}")
-                    params[key] = value
+                for key, val in params.items():
+                    log.debug(f"Parameter {key}={val}")
 
                 # Declare an intermediate function (this allows us to wrap
                 # with a optional timeout)
@@ -608,10 +591,54 @@ class BaseBench:
                 # Check the result
                 assert tb.scoreboard.result, "Scoreboard reported test failure"
 
-            _imposter.__module__ = cls.__module__.split(".")[0]
-            _imposter.__name__ = func.__name__
-            _imposter.__qualname__ = func.__qualname__
-            return cocotb.test(_imposter)
+            base_tc_name = func.__name__
+            # Are there any parameters for this test?
+            raw_tc_params = cls.get_parameter("testcases")
+            params = {}
+            for key, cast in cls.TEST_REQ_PARAMS[func]:
+                # First look for "<TESTCASE_NAME>.<PARAMETER_NAME>"
+                # but fall back to just "<PARAMETER_NAME>"
+                value = raw_tc_params.get(f"{base_tc_name}.{key}", raw_tc_params.get(key, None))
+                if value is None:
+                    continue
+
+                # Cast string values to the appropriate type
+                if isinstance(value, str) and cast is not str:
+                    if cast is bool:
+                        value = strtobool(value)
+                    else:
+                        value = cast(value)
+                params[key] = value
+
+            # Generate test cases for all permutations of parameter values
+            keys, vals = zip(*params.items(), strict=False) if len(params) > 0 else ([], [])
+            vals = [val if isinstance(val, list) else [val] for val in vals]
+            permutations_dicts = [
+                dict(zip(keys, v, strict=False)) for v in itertools.product(*vals)
+            ]
+            for params in permutations_dicts:
+                if len(permutations_dicts) == 1:
+                    params_name = ""  # If there are no list parameters use "normal" naming
+                else:
+                    params_name = functools.reduce(
+                        lambda x, y: x + "_" + y,
+                        [f"{key!s}_{val!s}" for key, val in params.items()],
+                    )
+                    params_name = "_" + params_name
+                tc_name = base_tc_name + params_name
+
+                async def _imposter(dut, params=params, tc_name=tc_name):
+                    await _imposter_inner(dut, params, tc_name)
+
+                _imposter.__module__ = cls.__module__.split(".")[0]
+                _imposter.__name__ = func.__name__ + params_name
+                _imposter.__qualname__ = func.__qualname__ + params_name
+                mod = inspect.getmodule(_imposter)
+                if len(permutations_dicts) == 1:
+                    return cocotb.test(_imposter)
+                else:
+                    # Creates a cocotb.test class that is found by the cocotb discovery mechanism
+                    setattr(mod, func.__name__ + params_name, cocotb.test(_imposter))
 
         return _inner
 
