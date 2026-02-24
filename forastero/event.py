@@ -25,11 +25,20 @@ from cocotb.triggers import Event
 class DataEvent(Event):
     def __init__(self, *args, **kwds):
         super().__init__(*args, **kwds)
-        self._payload = None
+        self.payload = None
 
     def set(self, data=None):
         super().set()
-        self._payload = data
+        self.payload = data
+
+    @property
+    def data(self):
+        """Alias for the event payload."""
+        return self.payload
+
+    @data.setter
+    def data(self, value):
+        self.payload = value
 
 
 class EventEmitter:
@@ -113,4 +122,4 @@ class EventEmitter:
         """
         evt = self._get_wait_event(event)
         await evt.wait()
-        return evt._payload
+        return evt.payload
