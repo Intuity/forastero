@@ -25,11 +25,20 @@ from cocotb.triggers import Event
 class DataEvent(Event):
     def __init__(self, *args, **kwds):
         super().__init__(*args, **kwds)
-        self.data = None
+        self.payload = None
 
     def set(self, data=None):
         super().set()
-        self.data = data
+        self.payload = data
+
+    @property
+    def data(self):
+        """Alias for the event payload."""
+        return self.payload
+
+    @data.setter
+    def data(self, value):
+        self.payload = value
 
 
 class EventEmitter:
@@ -93,10 +102,10 @@ class EventEmitter:
             if asyncio.iscoroutine(call):
                 cocotb.start_soon(call)
         # Trigger pending events
-        events = self._waiting[event][:]
+        pending = self._waiting[event][:]
         self._waiting[event].clear()
-        for event in events:
-            event.set(data=obj)
+        for evt in pending:
+            evt.set(data=obj)
 
     def _get_wait_event(self, event: Enum) -> DataEvent:
         evt = DataEvent()
@@ -113,4 +122,4 @@ class EventEmitter:
         """
         evt = self._get_wait_event(event)
         await evt.wait()
-        return evt.data
+        return evt.payload
