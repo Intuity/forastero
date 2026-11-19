@@ -33,7 +33,7 @@ class BaseTransaction:
     """
 
     timestamp: int = dataclasses.field(
-        default_factory=lambda: get_sim_time(units="ns"), compare=False
+        default_factory=lambda: get_sim_time(unit="ns"), compare=False
     )
 
     _f_event: Enum | None = dataclasses.field(default=None, compare=False)

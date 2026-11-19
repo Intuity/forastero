@@ -487,7 +487,7 @@ class BaseBench:
 
                 # If clock driving specified, start the clock
                 if tb.clk_drive:
-                    cocotb.start_soon(Clock(tb.clk, tb.clk_period, units=tb.clk_units).start())
+                    cocotb.start_soon(Clock(tb.clk, tb.clk_period, unit=tb.clk_units).start())
 
                 # If reset requested, run the sequence
                 if reset:
@@ -520,7 +520,7 @@ class BaseBench:
 
                     # If clock driving specified, start the clock
                     if tb.clk_drive:
-                        cocotb.start_soon(Clock(tb.clk, tb.clk_period, units=tb.clk_units).start())
+                        cocotb.start_soon(Clock(tb.clk, tb.clk_period, unit=tb.clk_units).start())
 
                     # If reset requested, run the sequence
                     if reset:
